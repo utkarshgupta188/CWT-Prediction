@@ -68,7 +68,7 @@ async def _feedback_handler(args):
 
 registry.register(
     name="save_feedback",
-    toolset="crypto_feedback",
+    toolset="hermes-cli",
     schema=FEEDBACK_SCHEMA,
     handler=_feedback_handler,
     is_async=True,

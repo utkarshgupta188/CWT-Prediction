@@ -1,3 +1,4 @@
+import asyncio
 import json
 import sys
 import time
@@ -62,12 +63,18 @@ class HermesSupervisorAgent:
         overall_start = time.time()
 
         try:
-            markets = await self._step_search(symbol)
+            async def _market_and_prediction():
+                df = await self._step_market_data(symbol, interval, limit)
+                return await self._step_prediction(df)
+
+            search_task = asyncio.create_task(self._step_search(symbol))
+            prediction_task = asyncio.create_task(_market_and_prediction())
+
+            markets, prediction_result = await asyncio.gather(
+                search_task, prediction_task,
+            )
+
             market_prob, question = self._resolve_market_probability(markets, symbol)
-
-            df = await self._step_market_data(symbol, interval, limit)
-
-            prediction_result = await self._step_prediction(df)
 
             risk_result = await self._step_risk(market_prob, prediction_result["probability"])
 
@@ -121,14 +128,18 @@ class HermesSupervisorAgent:
             logger.error(f"HermesSupervisor: Flow failed after {elapsed:.2f}s: {e}")
             raise
 
-    async def _step_search(self, symbol: str):
-        logger.info("HermesSupervisor: Step 1 - Searching prediction markets")
+    async def _step_search(self, symbol: str, timeout: float = 30.0):
+        logger.info("HermesSupervisor: Step 1 - Searching prediction markets (timeout=%ss)", timeout)
         start = time.time()
         try:
-            markets = await self.search_agent.execute()
+            markets = await asyncio.wait_for(self.search_agent.execute(), timeout=timeout)
             elapsed = time.time() - start
             logger.info(f"HermesSupervisor: Step 1 completed in {elapsed:.2f}s, found {len(markets)} markets")
             return markets
+        except asyncio.TimeoutError:
+            elapsed = time.time() - start
+            logger.warning(f"HermesSupervisor: Step 1 timed out after {elapsed:.2f}s, returning empty")
+            return []
         except Exception as e:
             elapsed = time.time() - start
             logger.error(f"HermesSupervisor: Step 1 failed after {elapsed:.2f}s: {e}")
@@ -194,35 +205,14 @@ class HermesSupervisorAgent:
         risk_result: dict,
         question: str,
     ) -> str:
-        logger.info("HermesSupervisor: Step 5 - Generating reasoning via AIAgent")
+        logger.info("HermesSupervisor: Step 5 - Generating reasoning (deterministic fallback)")
         start = time.time()
-        try:
-            agent = self._get_ai_agent()
-            if agent is None:
-                return self._fallback_reasoning(
-                    symbol, interval, prediction_result, market_prob, risk_result
-                )
-            prompt = self._build_reasoning_prompt(
-                symbol, interval, prediction_result, market_prob, risk_result, question
-            )
-            result = agent.run_conversation(
-                user_message=prompt,
-                system_message="You are a crypto prediction research analyst. Generate concise explanations based on provided metrics. Never calculate Kelly, predict prices, or query external data.",
-            )
-            reasoning = result.get("final_response", "").strip()
-            if reasoning:
-                elapsed = time.time() - start
-                logger.info(f"HermesSupervisor: Step 5 completed in {elapsed:.2f}s")
-                return reasoning
-        except Exception as e:
-            elapsed = time.time() - start
-            logger.warning(f"HermesSupervisor: AIAgent reasoning failed after {elapsed:.2f}s: {e}")
-
-        elapsed = time.time() - start
-        logger.info(f"HermesSupervisor: Step 5 completed in {elapsed:.2f}s (fallback)")
-        return self._fallback_reasoning(
+        reasoning = self._fallback_reasoning(
             symbol, interval, prediction_result, market_prob, risk_result
         )
+        elapsed = time.time() - start
+        logger.info(f"HermesSupervisor: Step 5 completed in {elapsed:.3f}s")
+        return reasoning
 
     def _build_reasoning_prompt(
         self,

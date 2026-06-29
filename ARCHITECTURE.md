@@ -6,7 +6,7 @@ This document provides a comprehensive breakdown of the design patterns, data mo
 
 ## 1. System Architecture Overview
 
-The system is designed around **Clean Architecture principles**, strictly isolating the external data layers, database storage, prediction model orchestration, and the REST API. 
+The system is designed around **Clean Architecture principles**, strictly isolating the external data layers, database storage, prediction model orchestration, and the REST API. Orchestration is driven by the **NousResearch Hermes Agent Framework**.
 
 ```mermaid
 graph TD
@@ -14,24 +14,24 @@ graph TD
     Client -->|POST /predict | PredictRoute[routes/predict.py]
     Client -->|GET /markets | MarketRoute[routes/market.py]
     Client -->|POST /feedback | PredictRoute
+
+    PredictRoute -->|Orchestrate via | HermesSup[HermesSupervisorAgent]
+    HermesSup -->|reasoning via| AIAgent[Hermes AIAgent<br/>OpenRouter LLM]
+    HermesSup -->|tool: search_polymarket<br/>tool: search_kalshi| Search[HermesSearchAgent]
+    HermesSup -->|tool: get_market_data| MarketData[HermesMarketDataAgent]
+    HermesSup -->|tool: get_prediction| PredictAgent[HermesPredictionAgent]
+    HermesSup -->|tool: calculate_risk| Risk[HermesRiskAgent]
     
-    PredictRoute -->|Coordinate Flow | Supervisor[Supervisor Agent]
+    Search -->|Gamma API| Polymarket[PolymarketService]
+    Search -->|Trade API v2| Kalshi[KalshiService]
+    MarketData -->|Public OHLCV| Binance[BinanceProvider]
+    PredictAgent -->|Predict| Kronos[KronosService]
+    Risk -->|Calculate Fraction| Kelly[KellyCalculator]
     
-    Supervisor -->|1. Find Probabilities | Search[Search Agent]
-    Search -->|Gamma API | Polymarket[Polymarket Service]
-    Search -->|Trade API v2 | Kalshi[Kalshi Service]
-    
-    Supervisor -->|2. Fetch Candles | MarketData[Market Data Agent]
-    MarketData -->|Public OHLCV | Binance[Binance Provider]
-    
-    Supervisor -->|3. Forecast Price | PredictAgent[Prediction Agent]
-    PredictAgent -->|Predict | Kronos[Kronos Service]
-    
-    Supervisor -->|4. Size Bet | Risk[Risk Agent]
-    Risk -->|Calculate Fraction | Kelly[Kelly Calculator]
-    
-    Supervisor -->|5. Log to DB | DB[(SQLite DB)]
+    HermesSup -->|store prediction| DB[(SQLite DB)]
 ```
+
+**Key principle**: Hermes only orchestrates. All business logic — Binance fetching, Kronos prediction, Kelly calculation, database operations — stays in the original providers, services, and repository. Hermes tools are thin wrappers that delegate to these modules.
 
 ---
 
@@ -39,84 +39,200 @@ graph TD
 
 ```
 d:\CWT prediction/
-├── .agents/                    # Workspace configuration root for Hermes Agent
-├── crypto_prediction/          # Core python package
-│   ├── agents/                 # Multi-Agent orchestrators and coordinators
-│   │   ├── feedback_agent.py   # Compiles metrics and performance feedback
-│   │   ├── market_data_agent.py# Coordinates OHLCV market fetching
-│   │   ├── prediction_agent.py # Interfaces with the Kronos transformer model
-│   │   ├── risk_agent.py       # Sizes recommendations using Kelly Criterion
-│   │   ├── search_agent.py     # Pulls odds from Polymarket & Kalshi
-│   │   └── supervisor.py       # Coordinates sequencing and AIAgent reasoning
-│   ├── database/               # Data access and SQLAlchemy schema layer
-│   │   ├── models.py           # Declares Market, Prediction, Feedback, and Stats models
-│   │   └── repository.py       # Handles transactional CRUD with selectinload eager-loading
-│   ├── prediction/             # Deep learning layer
-│   │   ├── Kronos/             # Submodule: Shiyu-coder/Kronos foundation model
-│   │   └── kronos_service.py   # Tokenizer setup, model loaders, and Mock fallbacks
-│   ├── providers/              # Market data feed abstraction layer
-│   │   ├── base.py             # Defines abstract MarketDataProvider
-│   │   └── binance_provider.py # Fetches Binance historical candles with retry logic
-│   ├── routes/                 # FastAPI REST Controllers
-│   │   ├── health.py           # Basic health checks
-│   │   ├── market.py           # Endpoint for querying external prediction markets
-│   │   └── predict.py          # Prediction execution, history logs, and outcome feedback
-│   ├── schemas/                # Pydantic schema validation & configurations
-│   ├── templates/              # HTML / CSS Web UI resources
-│   └── main.py                 # FastAPI Application bootstrap entry point
-├── run_prediction.py           # Command line runner interface
-└── tests/                      # Pytest unit testing suite
+├── crypto_prediction/              # Core python package
+│   ├── hermes/                     # Hermes Agent Framework integration
+│   │   ├── __init__.py             # Bootstraps Hermes path, imports all tools/agents
+│   │   ├── hermes_bootstrap.py     # Adds Hermes framework to sys.path
+│   │   ├── memory.py               # HermesMemory - prediction history for context
+│   │   ├── supervisor.py           # HermesSupervisorAgent - orchestrates pipeline
+│   │   ├── tools/                  # Hermes-registered tool wrappers
+│   │   │   ├── market_data_tool.py        # get_market_data → BinanceProvider
+│   │   │   ├── prediction_tool.py         # get_prediction → KronosService
+│   │   │   ├── risk_tool.py               # calculate_risk → KellyCalculator
+│   │   │   ├── search_polymarket_tool.py  # search_polymarket → PolymarketService
+│   │   │   ├── search_kalshi_tool.py      # search_kalshi → KalshiService
+│   │   │   └── feedback_tool.py           # save_feedback → PredictionRepository
+│   │   └── agents/                 # Hermes agent definitions
+│   │       ├── search_agent.py       # HermesSearchAgent
+│   │       ├── market_data_agent.py  # HermesMarketDataAgent
+│   │       ├── prediction_agent.py   # HermesPredictionAgent
+│   │       ├── risk_agent.py         # HermesRiskAgent
+│   │       └── feedback_agent.py     # HermesFeedbackAgent
+│   ├── database/                   # Data access and SQLAlchemy schema layer
+│   │   ├── models.py               # Market, Prediction, Feedback, Statistics
+│   │   └── repository.py           # Async CRUD with selectinload eager-loading
+│   ├── prediction/                 # Deep learning layer
+│   │   ├── Kronos/                 # Submodule: Kronos foundation model
+│   │   └── kronos_service.py       # Tokenizer, model loaders, Mock fallback
+│   ├── providers/                  # Market data feed abstraction
+│   │   ├── base.py                 # Abstract MarketDataProvider
+│   │   └── binance_provider.py     # Binance OHLCV with retry logic
+│   ├── services/                   # Prediction market API clients
+│   │   ├── polymarket.py           # Gamma API client
+│   │   └── kalshi.py               # Trade API v2 client
+│   ├── risk/                       # Position sizing
+│   │   └── kelly.py                # Kelly Criterion calculator
+│   ├── routes/                     # FastAPI REST Controllers
+│   │   ├── health.py               # GET /health
+│   │   ├── market.py               # GET /markets
+│   │   └── predict.py              # POST /predict, GET /history, POST /feedback, GET /statistics
+│   ├── schemas/                    # Pydantic config (Settings)
+│   ├── templates/                  # HTML dashboard (index.html)
+│   ├── utils/                      # logger, helpers (retry)
+│   └── main.py                     # FastAPI bootstrap
+├── run_prediction.py               # CLI runner
+└── tests/                          # Pytest suite
+    ├── test_system.py              # Kelly, Binance, Hermes agent execution tests
+    └── test_hermes.py              # Hermes tool schemas, agents, memory, supervisor tests
 ```
 
 ---
 
 ## 3. Deep Technical Specifications
 
-### 3.1 Data Persistence Layer (`crypto_prediction/database/`)
-- **Repository Pattern**: `PredictionRepository` decouples the database engine operations from the rest of the application. 
-- **Async Session Management**: Implemented using `SQLAlchemy`'s `AsyncSessionLocal` engine.
-- **Eager Loading**: To resolve async lazy loading exceptions, relationship queries are eager-loaded with `selectinload(DBPrediction.feedbacks)`.
+### 3.1 Hermes Framework Integration (`crypto_prediction/hermes/`)
+
+#### Tool Registration
+Each tool file calls `tools.registry.register()` at module import time with an OpenAI-format function schema, a handler function, and a toolset name. Example:
+
+```
+market_data_tool.py
+  registry.register(
+      name="get_market_data",
+      toolset="crypto_market_data",
+      schema={...},
+      handler=_market_data_handler,  # calls BinanceProvider.get_klines()
+      is_async=True,
+  )
+```
+
+Six tools are registered — one per external service. Tools contain **zero business logic**; they delegate entirely to the existing providers, services, risk calculator, and repository.
+
+#### Agent Tool Isolation
+Each agent class restricts which tools it may invoke:
+
+| Hermes Agent | Allowed Tools |
+|---|---|
+| `HermesSearchAgent` | `search_polymarket`, `search_kalshi` |
+| `HermesMarketDataAgent` | `get_market_data` |
+| `HermesPredictionAgent` | `get_prediction` |
+| `HermesRiskAgent` | `calculate_risk` |
+| `HermesFeedbackAgent` | `save_feedback` |
+
+No agent has access to tools outside its responsibility.
+
+#### Orchestration Flow (HermesSupervisorAgent)
+
+```
+1. _step_search()        → HermesSearchAgent.execute()
+                            → registry.dispatch("search_polymarket", ...)
+                            → registry.dispatch("search_kalshi", ...)
+                            → returns normalized market list
+
+2. _resolve_market_probability(markets, symbol)
+                            → matches base asset (e.g. BTC) to market
+                            → returns market_prob, question
+
+3. _step_market_data()    → HermesMarketDataAgent.execute(symbol, interval, limit)
+                            → registry.dispatch("get_market_data", ...)
+                            → BinanceProvider.get_klines()
+                            → returns pd.DataFrame
+
+4. _step_prediction(df)   → HermesPredictionAgent.execute(df)
+                            → registry.dispatch("get_prediction", ...)
+                            → KronosService.predict_next_movement()
+                            → returns {direction, confidence, probability, price}
+
+5. _step_risk(market_prob, model_prob)
+                            → HermesRiskAgent.execute(market_prob, model_prob)
+                            → registry.dispatch("calculate_risk", ...)
+                            → KellyCalculator.calculate()
+                            → returns {edge, kelly_fraction, position_size, risk_level}
+
+6. _step_reasoning()      → AIAgent.run_conversation(prompt)
+                            → Hermes AIAgent (OpenRouter LLM)
+                            → returns reasoning text
+                            No tools enabled for this step — pure LLM explanation.
+
+7. repo.save_prediction() → stores to SQLite
+   memory.add_prediction() → updates HermesMemory
+```
+
+#### Error Handling
+- Each step is wrapped in try/except with logging.
+- `_step_search` returns `[]` on failure — the pipeline continues with `market_prob=0.5`.
+- `_step_market_data` raises on empty DataFrame — pipeline halts.
+- `_step_prediction`, `_step_risk` raise on failure — pipeline halts.
+- `_step_reasoning` falls back to deterministic template if AIAgent is unavailable.
+
+### 3.2 Hermes Memory (`crypto_prediction/hermes/memory.py`)
+
+Stores historical prediction context for LLM reasoning — does NOT store raw OHLCV.
+
+**Per-prediction entry:**
+```
+{
+    symbol, interval,
+    prediction_direction, confidence,
+    model_probability, market_probability,
+    kelly_fraction, market_disagreement,
+    reasoning, accuracy (optional), timestamp
+}
+```
+
+Maximum 20 entries by default. Passed into `AIAgent.run_conversation()` prompt for context-aware reasoning.
+
+### 3.3 Forecasting Model Integration (`crypto_prediction/prediction/`)
+- **Model Family**: Built on the **Kronos** foundation time-series transformer.
+- **Hardware Acceleration**: Auto-detects GPU (`cuda:0` / `mps`) with CPU fallback.
+- **Robust Model Loading**: Loads tokenizer and model weights from Hugging Face hub (`NeoQuasar/Kronos-Tokenizer-base`, `NeoQuasar/Kronos-small`).
+- **Mock Predictor**: Configurable fallback (`USE_MOCK_PREDICTOR=True`) with trend-biased synthetic forecasts.
+
+### 3.4 Position Sizing (`crypto_prediction/risk/kelly.py`)
+- **Binary Kelly Formula**:
+  - If `model_prob > market_prob`: $f^* = \frac{p - m_p}{1 - m_p}$ (YES/UP)
+  - If `model_prob < market_prob`: $f^* = \frac{m_p - p}{m_p}$ (NO/DOWN)
+  - Half-Kelly multiplier (`0.5`) applied for risk mitigation.
+- **Risk levels**: `NONE` (0%), `LOW` (<5%), `MEDIUM` (<15%), `HIGH` (≥15%).
+
+### 3.5 Data Persistence Layer (`crypto_prediction/database/`)
+- **Repository Pattern**: `PredictionRepository` decouples DB operations from application logic.
+- **Async Session**: SQLAlchemy `AsyncSessionLocal` engine.
+- **Eager Loading**: `selectinload(DBPrediction.feedbacks)` for relationship queries.
 - **Entities**:
-  - `DBMarket`: Cache for Polymarket/Kalshi question probabilities.
-  - `DBPrediction`: Logs prediction variables (direction, confidence, market odds, Kelly sizing, narrative text).
-  - `DBFeedback`: Links prediction outcomes to actual movements to evaluate accuracy.
-  - `DBStatistics`: Keeps running accuracy levels, correct prediction counts, and total runs.
-
-### 3.2 Forecasting Model Integration (`crypto_prediction/prediction/`)
-- **Model Family**: Built on the **shiyu-coder/Kronos** foundation time-series transformer.
-- **Hardware Acceleration**: Auto-detects and uses GPU architectures (`cuda:0` / `mps` for macOS) with fallback to `cpu`.
-- **Robust Model Loading**: Loads tokenizer and model weights from the Hugging Face hub safely (`NeoQuasar/Kronos-Tokenizer-base` and `NeoQuasar/Kronos-small`).
-- **Dynamic & Trend-Biased Fallback**: A configurable mock predictor (`USE_MOCK_PREDICTOR=True` / `False`) is provided. It computes the trend of the last 10 candles, adds a dynamic seed using the asset's price, and biases the forecast return distributions accordingly.
-
-### 3.3 Position Sizing Layer (`crypto_prediction/risk/`)
-- **Binary Sizing Kelly Formula**:
-  - Odds ($b$) derived as: $b = \frac{1 - m_p}{m_p}$
-  - Optimal capital allocation fraction: $f^* = \frac{p \cdot b - q}{b} = \frac{p - m_p}{1 - m_p}$
-  - *Where:* $p$ is model probability, $q = 1 - p$, and $m_p$ is prediction market probability.
-  - **Risk mitigation**: Scaled down using a `0.5` half-Kelly multiplier.
-
-### 3.4 Multi-Agent Coordination Flow (`crypto_prediction/agents/`)
-- **Supervisor Agent**: Superintends the sequential pipeline steps and passes research variables to the Hermes **`AIAgent`** to produce the reasoning commentary.
-- **Hermes Agent Integration**:
-  - Requires a model with a context window of at least **64k tokens** (satisfied by `google/gemini-flash-1.5-free` via OpenRouter).
-  - Prompts are dynamically contextualized with asset pricing data, predicted momentum, market odds, and Kelly suggestions to write the mathematical edge overview.
+  - `DBMarket`: Cache for Polymarket/Kalshi probabilities.
+  - `DBPrediction`: Direction, confidence, market odds, Kelly, reasoning.
+  - `DBFeedback`: Links predictions to actual movements.
+  - `DBStatistics`: Running accuracy, correct/total counts.
 
 ---
 
-## 4. REST & CLI Usage Guidelines
+## 4. Hermes Tool → Existing Module Mapping
 
-### 4.1 CLI Execution
-Run the CLI runner script directly:
+| Hermes Tool | Registry Name | Module Called | File |
+|---|---|---|---|
+| Market Data | `get_market_data` | `BinanceProvider.get_klines()` | `providers/binance_provider.py` |
+| Prediction | `get_prediction` | `predict_next_movement()` | `prediction/kronos_service.py` |
+| Risk | `calculate_risk` | `KellyCalculator.calculate()` | `risk/kelly.py` |
+| Polymarket Search | `search_polymarket` | `PolymarketService.get_active_markets()` | `services/polymarket.py` |
+| Kalshi Search | `search_kalshi` | `KalshiService.get_active_markets()` | `services/kalshi.py` |
+| Feedback | `save_feedback` | `PredictionRepository.save_feedback()` | `database/repository.py` |
+
+---
+
+## 5. REST & CLI Usage Guidelines
+
+### 5.1 CLI Execution
 ```bash
 $env:PYTHONPATH="d:\CWT prediction" ; C:\Users\ag065\AppData\Local\Programs\Python\Python311\python.exe run_prediction.py --symbol BTCUSDT --interval 5m
 ```
 
-### 4.2 Start API server
+### 5.2 Start API Server
 ```bash
 $env:PYTHONPATH="d:\CWT prediction" ; C:\Users\ag065\AppData\Local\Programs\Python\Python311\python.exe -m crypto_prediction.main
 ```
 
-### 4.3 REST Request Examples
+### 5.3 REST Request Examples
 - **Predict** (`POST /predict`):
   ```json
   {"symbol": "BTCUSDT", "interval": "5m", "limit": 1000}

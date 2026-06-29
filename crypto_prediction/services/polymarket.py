@@ -10,7 +10,7 @@ class PolymarketService:
     def __init__(self, base_url: str = "https://gamma-api.polymarket.com"):
         self.base_url = base_url
 
-    async def get_active_markets(self, limit: int = 20) -> List[dict]:
+    async def get_active_markets(self, limit: int = 20, max_retries: int = 5) -> List[dict]:
         """
         Fetch active markets from Polymarket and normalize them.
         """
@@ -24,7 +24,7 @@ class PolymarketService:
         logger.info("Fetching markets from Polymarket...")
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await request_with_retry(client, "GET", endpoint, params=params)
+                response = await request_with_retry(client, "GET", endpoint, params=params, max_retries=max_retries)
                 markets_data = response.json()
         except Exception as e:
             logger.error(f"Failed to fetch from Polymarket: {e}")

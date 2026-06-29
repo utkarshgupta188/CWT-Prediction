@@ -25,7 +25,7 @@ async def _search_polymarket_handler(args):
     try:
         from crypto_prediction.services.polymarket import PolymarketService
         service = PolymarketService()
-        markets = await service.get_active_markets(limit=limit)
+        markets = await service.get_active_markets(limit=limit, max_retries=1)
         elapsed = time.time() - start
         logger.info(f"HermesTool[search_polymarket]: Finished in {elapsed:.2f}s, found {len(markets)} markets")
         return json.dumps({"success": True, "markets": markets, "platform": "Polymarket"}, default=str)
@@ -36,7 +36,7 @@ async def _search_polymarket_handler(args):
 
 registry.register(
     name="search_polymarket",
-    toolset="crypto_search",
+    toolset="hermes-cli",
     schema=SEARCH_POLYMARKET_SCHEMA,
     handler=_search_polymarket_handler,
     is_async=True,

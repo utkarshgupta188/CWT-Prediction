@@ -1,3 +1,4 @@
+import asyncio
 import json
 import time
 from typing import List
@@ -13,19 +14,38 @@ class HermesSearchAgent:
     def allowed_tools(self) -> List[str]:
         return list(ALLOWED_TOOLS)
 
-    async def execute(self, limit_per_platform: int = 10) -> List[dict]:
+    async def execute(self, limit_per_platform: int = 10, per_call_timeout: float = 25.0) -> List[dict]:
         logger.info("HermesSearchAgent: Started")
         start = time.time()
+        tasks = []
         try:
-            poly_result_str = registry.dispatch("search_polymarket", {"limit": limit_per_platform})
-            kalshi_result_str = registry.dispatch("search_kalshi", {"limit": limit_per_platform})
-            poly_result = json.loads(poly_result_str)
-            kalshi_result = json.loads(kalshi_result_str)
+            loop = asyncio.get_running_loop()
+            async def _dispatch(platform: str):
+                return await asyncio.wait_for(
+                    loop.run_in_executor(None, registry.dispatch, platform, {"limit": limit_per_platform}),
+                    timeout=per_call_timeout,
+                )
+
+            poly_task = asyncio.create_task(_dispatch("search_polymarket"))
+            kalshi_task = asyncio.create_task(_dispatch("search_kalshi"))
+            tasks = [poly_task, kalshi_task]
+
+            poly_result_str, kalshi_result_str = await asyncio.gather(
+                poly_task, kalshi_task, return_exceptions=True,
+            )
+
             markets = []
-            if "error" not in poly_result:
-                markets.extend(poly_result.get("markets", []))
-            if "error" not in kalshi_result:
-                markets.extend(kalshi_result.get("markets", []))
+            for name, result_str in [("polymarket", poly_result_str), ("kalshi", kalshi_result_str)]:
+                if isinstance(result_str, Exception):
+                    logger.warning(f"HermesSearchAgent: {name} failed: {result_str}")
+                    continue
+                try:
+                    result = json.loads(result_str) if isinstance(result_str, str) else {}
+                    if "error" not in result:
+                        markets.extend(result.get("markets", []))
+                except (json.JSONDecodeError, TypeError):
+                    logger.warning(f"HermesSearchAgent: {name} returned unparseable result")
+
             elapsed = time.time() - start
             logger.info(f"HermesSearchAgent: Finished in {elapsed:.2f}s, found {len(markets)} markets total")
             return markets
@@ -33,3 +53,7 @@ class HermesSearchAgent:
             elapsed = time.time() - start
             logger.error(f"HermesSearchAgent: Error after {elapsed:.2f}s: {e}")
             raise
+        finally:
+            for t in tasks:
+                if not t.done():
+                    t.cancel()

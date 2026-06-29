@@ -25,7 +25,7 @@ async def _search_kalshi_handler(args):
     try:
         from crypto_prediction.services.kalshi import KalshiService
         service = KalshiService()
-        markets = await service.get_active_markets(limit=limit)
+        markets = await service.get_active_markets(limit=limit, max_retries=1)
         elapsed = time.time() - start
         logger.info(f"HermesTool[search_kalshi]: Finished in {elapsed:.2f}s, found {len(markets)} markets")
         return json.dumps({"success": True, "markets": markets, "platform": "Kalshi"}, default=str)
@@ -36,7 +36,7 @@ async def _search_kalshi_handler(args):
 
 registry.register(
     name="search_kalshi",
-    toolset="crypto_search",
+    toolset="hermes-cli",
     schema=SEARCH_KALSHI_SCHEMA,
     handler=_search_kalshi_handler,
     is_async=True,

@@ -40,7 +40,7 @@ def _risk_handler(args):
 
 registry.register(
     name="calculate_risk",
-    toolset="crypto_risk",
+    toolset="hermes-cli",
     schema=RISK_SCHEMA,
     handler=_risk_handler,
     is_async=False,

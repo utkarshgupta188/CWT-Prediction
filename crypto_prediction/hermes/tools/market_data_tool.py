@@ -54,7 +54,7 @@ async def _market_data_handler(args):
 
 registry.register(
     name="get_market_data",
-    toolset="crypto_market_data",
+    toolset="hermes-cli",
     schema=MARKET_DATA_SCHEMA,
     handler=_market_data_handler,
     is_async=True,

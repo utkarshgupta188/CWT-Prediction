@@ -46,7 +46,7 @@ async def _prediction_handler(args):
 
 registry.register(
     name="get_prediction",
-    toolset="crypto_prediction",
+    toolset="hermes-cli",
     schema=PREDICTION_SCHEMA,
     handler=_prediction_handler,
     is_async=True,
