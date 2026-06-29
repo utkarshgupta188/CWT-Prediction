@@ -1,7 +1,7 @@
 import asyncio
 import argparse
 import json
-from crypto_prediction.agents.supervisor import SupervisorAgent
+from crypto_prediction.hermes import HermesSupervisorAgent
 from crypto_prediction.database.repository import AsyncSessionLocal, PredictionRepository
 from crypto_prediction.utils.logger import setup_logger
 from crypto_prediction.schemas.config import settings
@@ -19,7 +19,7 @@ async def main():
     
     async with AsyncSessionLocal() as session:
         repo = PredictionRepository(session)
-        supervisor = SupervisorAgent()
+        supervisor = HermesSupervisorAgent()
         result = await supervisor.execute_prediction_flow(
             repo=repo,
             symbol=args.symbol,

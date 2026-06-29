@@ -1,13 +1,13 @@
 from fastapi import APIRouter, Depends
 from typing import List
-from crypto_prediction.agents.search_agent import SearchAgent
+from crypto_prediction.hermes.agents import HermesSearchAgent
 from crypto_prediction.database.repository import AsyncSessionLocal, PredictionRepository
 from crypto_prediction.utils.logger import setup_logger
 from crypto_prediction.schemas.config import settings
 
 logger = setup_logger(settings.LOG_LEVEL)
 router = APIRouter()
-search_agent = SearchAgent()
+search_agent = HermesSearchAgent()
 
 async def get_repo():
     async with AsyncSessionLocal() as session:

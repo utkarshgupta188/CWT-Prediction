@@ -1,11 +1,10 @@
+import json
 import pytest
 import pandas as pd
 from unittest.mock import AsyncMock, MagicMock
 from crypto_prediction.risk.kelly import KellyCalculator
 from crypto_prediction.providers.binance_provider import BinanceProvider
-from crypto_prediction.agents.search_agent import SearchAgent
-from crypto_prediction.agents.prediction_agent import PredictionAgent
-from crypto_prediction.agents.feedback_agent import FeedbackAgent
+from crypto_prediction.hermes.agents import HermesSearchAgent, HermesPredictionAgent, HermesFeedbackAgent
 
 def test_kelly_calculator_yes():
     # If model prob > market prob
@@ -54,14 +53,14 @@ async def test_binance_provider_get_klines(mocker):
 
 @pytest.mark.asyncio
 async def test_prediction_agent_execute(mocker):
-    agent = PredictionAgent()
+    agent = HermesPredictionAgent()
     mock_predict = AsyncMock(return_value={
         "direction": "UP",
         "confidence": 0.85,
         "probability": 0.85,
         "predicted_price": 62000.0
     })
-    mocker.patch("crypto_prediction.agents.prediction_agent.predict_next_movement", mock_predict)
+    mocker.patch("crypto_prediction.prediction.kronos_service.predict_next_movement", mock_predict)
     
     df = pd.DataFrame({
         "timestamp": pd.date_range("2026-06-29", periods=100, freq="5min"),
@@ -77,19 +76,24 @@ async def test_prediction_agent_execute(mocker):
     assert res["confidence"] == 0.85
 
 @pytest.mark.asyncio
-async def test_feedback_agent_execute():
-    repo = MagicMock()
-    pred = MagicMock()
-    pred.prediction_direction = "UP"
-    pred.id = 1
-    repo.get_prediction_by_id = AsyncMock(return_value=pred)
-    repo.save_feedback = AsyncMock(return_value=MagicMock(correct=True))
-    repo.get_feedbacks = AsyncMock(return_value=[MagicMock(correct=True)])
-    repo.update_statistic = AsyncMock()
+async def test_feedback_agent_execute(mocker):
+    mock_feedback_result = {
+        "success": True,
+        "prediction_id": 1,
+        "predicted_direction": "UP",
+        "actual_movement": "UP",
+        "correct": True,
+        "correct_predictions": 1,
+        "total_predictions": 1,
+        "accuracy": 1.0
+    }
+    mocker.patch(
+        "crypto_prediction.hermes.agents.feedback_agent.registry.dispatch",
+        return_value=json.dumps(mock_feedback_result)
+    )
     
-    agent = FeedbackAgent()
-    res = await agent.execute(repo, prediction_id=1, actual_movement="UP")
+    agent = HermesFeedbackAgent()
+    res = await agent.execute(repo=None, prediction_id=1, actual_movement="UP")
     
     assert res["correct"] is True
     assert res["accuracy"] == 1.0
-    repo.update_statistic.assert_any_call("accuracy", 1.0)

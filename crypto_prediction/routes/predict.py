@@ -1,16 +1,16 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from typing import List, Optional
-from crypto_prediction.agents.supervisor import SupervisorAgent
-from crypto_prediction.agents.feedback_agent import FeedbackAgent
+from crypto_prediction.hermes import HermesSupervisorAgent
+from crypto_prediction.hermes.agents import HermesFeedbackAgent
 from crypto_prediction.database.repository import AsyncSessionLocal, PredictionRepository
 from crypto_prediction.utils.logger import setup_logger
 from crypto_prediction.schemas.config import settings
 
 logger = setup_logger(settings.LOG_LEVEL)
 router = APIRouter()
-supervisor = SupervisorAgent()
-feedback_agent = FeedbackAgent()
+supervisor = HermesSupervisorAgent()
+feedback_agent = HermesFeedbackAgent()
 
 async def get_repo():
     async with AsyncSessionLocal() as session:
