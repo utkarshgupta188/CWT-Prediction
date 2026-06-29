@@ -20,11 +20,6 @@ def get_kronos_predictor():
     if _predictor is not None:
         return _predictor
 
-    if settings.USE_MOCK_PREDICTOR:
-        logger.info("USE_MOCK_PREDICTOR is enabled. Instantiating MockKronosPredictor.")
-        _predictor = MockKronosPredictor()
-        return _predictor
-
     logger.info("Initializing Kronos model and tokenizer...")
     try:
         from model.kronos import Kronos, KronosTokenizer, KronosPredictor
@@ -49,41 +44,9 @@ def get_kronos_predictor():
         logger.info("Kronos predictor initialized successfully.")
     except Exception as e:
         logger.error(f"Error loading Kronos models from Hugging Face: {e}")
-        # Return a mock predictor for test environments or if loading fails
-        logger.warning("Fallback/Mock predictor will be used if remote load failed.")
-        _predictor = MockKronosPredictor()
+        raise
         
     return _predictor
-
-class MockKronosPredictor:
-    """Fallback predictor if HuggingFace weights cannot be loaded or during tests."""
-    def predict(self, df, x_timestamp, y_timestamp, pred_len, T=1.0, top_k=0, top_p=0.9, sample_count=1, verbose=True):
-        logger.warning("Mock predictor is being used.")
-        last_close = df['close'].iloc[-1]
-        
-        # Determine trend-based bias from recent candles
-        recent_trend = 0.0
-        if len(df) >= 10:
-            recent_trend = (df['close'].iloc[-1] - df['close'].iloc[-10]) / df['close'].iloc[-10]
-        mean_bias = np.clip(recent_trend * 0.1, -0.001, 0.001)
-
-        # Generate some synthetic future prices dynamically
-        seed = int(abs(last_close * 100000 + len(df))) % (2**32 - 1)
-        np.random.seed(seed)
-        prices = [last_close]
-        for _ in range(pred_len):
-            change = (np.random.normal(mean_bias, 0.002)) * last_close
-            prices.append(prices[-1] + change)
-            
-        prices = prices[1:]
-        pred_df = pd.DataFrame(index=y_timestamp)
-        pred_df['open'] = prices
-        pred_df['high'] = [p * 1.002 for p in prices]
-        pred_df['low'] = [p * 0.998 for p in prices]
-        pred_df['close'] = prices
-        pred_df['volume'] = 0.0
-        pred_df['amount'] = 0.0
-        return pred_df
 
 async def predict_next_movement(df: pd.DataFrame, pred_len: int = 5) -> dict:
     """

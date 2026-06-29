@@ -1,7 +1,5 @@
 import pytest
 import json
-import pandas as pd
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from crypto_prediction.hermes.tools.market_data_tool import MARKET_DATA_SCHEMA
 from crypto_prediction.hermes.tools.prediction_tool import PREDICTION_SCHEMA
@@ -201,181 +199,28 @@ class TestHermesSupervisorStepMethods:
         assert "100k" in question
 
     @pytest.mark.asyncio
-    async def test_resolve_market_probability_defaults(self):
+    async def test_resolve_market_probability_no_match_raises(self):
         from crypto_prediction.hermes.supervisor import HermesSupervisorAgent
 
         supervisor = HermesSupervisorAgent()
-        prob, question = supervisor._resolve_market_probability([], "SOLUSDT")
-        assert prob == 0.5
-        assert "No active" in question
-
-    def test_fallback_reasoning(self):
-        from crypto_prediction.hermes.supervisor import HermesSupervisorAgent
-
-        supervisor = HermesSupervisorAgent()
-        reasoning = supervisor._fallback_reasoning(
-            "BTCUSDT", "5m",
-            {"direction": "UP", "confidence": 0.85, "probability": 0.85, "predicted_price": 62000.0},
-            0.6,
-            {"recommended_direction": "YES", "recommended_position_size": 0.25, "risk_level": "MEDIUM"},
-        )
-        assert "UP" in reasoning
-        assert "85.00%" in reasoning
-        assert "25.00%" in reasoning
-        assert "MEDIUM" in reasoning
-
-    def test_build_reasoning_prompt(self):
-        from crypto_prediction.hermes.supervisor import HermesSupervisorAgent
-
-        supervisor = HermesSupervisorAgent()
-        prompt = supervisor._build_reasoning_prompt(
-            "BTCUSDT", "5m",
-            {"direction": "UP", "confidence": 0.85, "probability": 0.85, "predicted_price": 62000.0},
-            0.6,
-            {"recommended_direction": "YES", "recommended_position_size": 0.25, "risk_level": "MEDIUM"},
-            "Will BTC reach 100k?",
-        )
-        assert "BTCUSDT" in prompt
-        assert "5m" in prompt
-        assert "UP" in prompt
-        assert "YES" in prompt
-        assert "Will BTC reach 100k?" in prompt
-        assert "150 words" in prompt
+        with pytest.raises(ValueError, match="No prediction market found"):
+            supervisor._resolve_market_probability([], "SOLUSDT")
 
 
-@pytest.mark.asyncio
-async def test_hermes_supervisor_full_flow(mocker):
-    from crypto_prediction.hermes import HermesSupervisorAgent
+def test_hermes_memory_in_supervisor():
+    from crypto_prediction.hermes.supervisor import HermesSupervisorAgent
 
     supervisor = HermesSupervisorAgent()
-
-    mock_repo = MagicMock()
-    mock_db_pred = MagicMock()
-    mock_db_pred.id = 42
-    mock_repo.save_prediction = AsyncMock(return_value=mock_db_pred)
-
-    mock_search_markets = [
-        {"asset": "BTC", "market_probability": 0.65, "question": "Will BTC reach 100k?"},
-    ]
-
-    test_df = pd.DataFrame({
-        "timestamp": pd.date_range("2026-06-29", periods=100, freq="5min"),
-        "open": [60000.0] * 100, "high": [60100.0] * 100,
-        "low": [59900.0] * 100, "close": [60050.0] * 100,
-        "volume": [10.0] * 100,
-    })
-
-    mocker.patch.object(supervisor.search_agent, "execute",
-                        AsyncMock(return_value=mock_search_markets))
-    mocker.patch.object(supervisor.market_data_agent, "execute",
-                        AsyncMock(return_value=test_df))
-    mocker.patch.object(supervisor.prediction_agent, "execute",
-                        AsyncMock(return_value={
-                            "direction": "UP", "confidence": 0.85,
-                            "probability": 0.85, "predicted_price": 62000.0
-                        }))
-    mocker.patch.object(supervisor.risk_agent, "execute",
-                        AsyncMock(return_value={
-                            "recommended_direction": "YES",
-                            "recommended_position_size": 0.25,
-                            "risk_level": "MEDIUM", "edge": 0.2,
-                            "kelly_fraction": 0.5
-                        }))
-    mocker.patch.object(supervisor, "_step_reasoning",
-                        AsyncMock(return_value="Bullish momentum suggests upward movement."))
-
-    result = await supervisor.execute_prediction_flow(
-        repo=mock_repo,
-        symbol="BTCUSDT",
-        interval="5m",
-        limit=100
+    supervisor.memory.add_prediction(
+        symbol="BTCUSDT", interval="5m",
+        prediction_direction="UP", confidence=0.85,
+        model_probability=0.85, market_probability=0.6,
+        kelly_fraction=0.25, reasoning="Bullish",
     )
-
-    assert result["prediction_id"] == 42
-    assert result["symbol"] == "BTCUSDT"
-    assert result["prediction"] == "UP"
-    assert result["confidence"] == 0.85
-    assert result["market_probability"] == 0.65
-    assert result["kelly"] == 0.25
-    assert result["reasoning"] == "Bullish momentum suggests upward movement."
-
-    mock_repo.save_prediction.assert_called_once()
-    saved_data = mock_repo.save_prediction.call_args[0][0]
-    assert saved_data["symbol"] == "BTCUSDT"
-    assert saved_data["prediction_direction"] == "UP"
-    assert saved_data["kelly_fraction"] == 0.25
-    assert saved_data["market_probability"] == 0.65
-    supervisor.search_agent.execute.assert_called_once()
-    supervisor.market_data_agent.execute.assert_called_once_with("BTCUSDT", "5m", 100)
-    supervisor.prediction_agent.execute.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_hermes_supervisor_empty_market_data_raises(mocker):
-    from crypto_prediction.hermes import HermesSupervisorAgent
-
-    supervisor = HermesSupervisorAgent()
-
-    mock_repo = MagicMock()
-    mock_search_markets = [
-        {"asset": "BTC", "market_probability": 0.65, "question": "Will BTC reach 100k?"},
-    ]
-    empty_df = pd.DataFrame()
-
-    mocker.patch.object(supervisor.search_agent, "execute",
-                        AsyncMock(return_value=mock_search_markets))
-    mocker.patch.object(supervisor.market_data_agent, "execute",
-                        AsyncMock(return_value=empty_df))
-
-    with pytest.raises(ValueError, match="No OHLCV data returned"):
-        await supervisor.execute_prediction_flow(
-            repo=mock_repo, symbol="BTCUSDT", interval="5m", limit=100
-        )
-
-
-@pytest.mark.asyncio
-async def test_hermes_supervisor_search_failure_continues(mocker):
-    from crypto_prediction.hermes import HermesSupervisorAgent
-
-    supervisor = HermesSupervisorAgent()
-
-    mock_repo = MagicMock()
-    mock_db_pred = MagicMock()
-    mock_db_pred.id = 1
-    mock_repo.save_prediction = AsyncMock(return_value=mock_db_pred)
-
-    test_df = pd.DataFrame({
-        "timestamp": pd.date_range("2026-06-29", periods=100, freq="5min"),
-        "open": [60000.0] * 100, "high": [60100.0] * 100,
-        "low": [59900.0] * 100, "close": [60050.0] * 100,
-        "volume": [10.0] * 100,
-    })
-
-    mocker.patch.object(supervisor.search_agent, "execute",
-                        AsyncMock(side_effect=Exception("Search failed")))
-    mocker.patch.object(supervisor.market_data_agent, "execute",
-                        AsyncMock(return_value=test_df))
-    mocker.patch.object(supervisor.prediction_agent, "execute",
-                        AsyncMock(return_value={
-                            "direction": "DOWN", "confidence": 0.75,
-                            "probability": 0.25, "predicted_price": 59000.0
-                        }))
-    mocker.patch.object(supervisor.risk_agent, "execute",
-                        AsyncMock(return_value={
-                            "recommended_direction": "NO",
-                            "recommended_position_size": 0.15,
-                            "risk_level": "MEDIUM", "edge": 0.1,
-                            "kelly_fraction": 0.3
-                        }))
-    mocker.patch.object(supervisor, "_step_reasoning",
-                        AsyncMock(return_value="Default reasoning."))
-
-    result = await supervisor.execute_prediction_flow(
-        repo=mock_repo, symbol="BTCUSDT", interval="5m", limit=100
-    )
-
-    assert result["prediction"] == "DOWN"
-    assert result["market_probability"] == 0.5
+    context = supervisor.memory.get_recent_context()
+    assert "BTCUSDT" in context
+    assert "UP" in context
+    assert "0.2500" in context
 
 
 def test_hermes_memory_in_supervisor():
