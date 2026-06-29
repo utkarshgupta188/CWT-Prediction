@@ -15,6 +15,8 @@ from crypto_prediction.hermes.agents import (
 )
 
 
+import json
+
 class HermesSupervisorAgent:
 
     def __init__(self):
@@ -32,73 +34,133 @@ class HermesSupervisorAgent:
         interval: str,
         limit: int = 1000,
     ) -> dict:
-        logger.info(f"HermesSupervisor: Beginning execution flow for {symbol} ({interval})")
+        logger.info(f"HermesSupervisor: Beginning agentic execution flow for {symbol} ({interval})")
         overall_start = time.time()
 
         try:
-            async def _market_and_prediction():
-                df = await self._step_market_data(symbol, interval, limit)
-                return await self._step_prediction(df)
+            import os
+            from run_agent import AIAgent
 
-            search_task = asyncio.create_task(self._step_search(symbol))
-            prediction_task = asyncio.create_task(_market_and_prediction())
-
-            markets, prediction_result = await asyncio.gather(
-                search_task, prediction_task,
+            agent = AIAgent(
+                base_url="https://openrouter.ai/api/v1",
+                api_key=os.environ.get("OPENROUTER_API_KEY"),
+                model=os.environ.get("MODEL_NAME", "google/gemini-2.5-flash"),
+                enabled_toolsets=["crypto-prediction"],
+                verbose_logging=False,
+                max_tokens=200
             )
 
-            market_prob, question = self._resolve_market_probability(markets, symbol)
+            base_asset = symbol.upper().replace("USDT", "").replace("BUSD", "")
+            asset_name = "Bitcoin" if base_asset == "BTC" else ("Ethereum" if base_asset == "ETH" else base_asset)
 
-            risk_result = await self._step_risk(market_prob, prediction_result["probability"])
+            prompt = (
+                f"Perform a crypto prediction flow for {symbol} ({interval} interval). "
+                f"The asset name is '{asset_name}'.\n"
+                "You must perform the following actions:\n"
+                f"1. Search active prediction markets for '{asset_name}' on both Polymarket and Kalshi using search_polymarket and search_kalshi.\n"
+                f"2. Predict the next movement of {symbol} using get_prediction (pass '[]' for candles parameter, as the tool will fetch the data internally).\n"
+                "3. Calculate risk using calculate_risk. Choose the most relevant market probability from the search results to compare with the model's prediction probability. If no matching market probability is found, default to 0.5.\n"
+                "Output your reasoning and the final prediction details (direction, confidence, market probability, kelly fraction) in a clear format."
+            )
+
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(None, agent.run_conversation, prompt)
+
+            if response.get("failed") and not response.get("messages"):
+                raise ValueError(f"Agent conversation failed: {response.get('error')}")
+
+            # Extract structured parameters from the conversation trajectory
+            prediction_direction = "NONE"
+            confidence = 0.5
+            model_probability = 0.5
+            market_probability = 0.5
+            kelly_fraction = 0.0
+            reasoning = response.get("final_response") or ""
+
+            # Extract reasoning from assistant messages
+            reasoning_parts = []
+            for msg in response.get("messages", []):
+                if msg.get("role") == "assistant":
+                    content = msg.get("content") or ""
+                    rc = msg.get("reasoning_content") or msg.get("reasoning")
+                    if rc:
+                        reasoning_parts.append(rc)
+                    elif content:
+                        reasoning_parts.append(content)
+            if reasoning_parts:
+                reasoning = "\n\n".join(reasoning_parts)
+
+            # Scan messages for tool call responses
+            for msg in response.get("messages", []):
+                if msg.get("role") == "tool":
+                    tool_name = msg.get("tool_name") or msg.get("name")
+                    content_str = msg.get("content") or ""
+                    try:
+                        content_data = json.loads(content_str)
+                    except Exception:
+                        continue
+
+                    if tool_name == "get_prediction":
+                        prediction_direction = content_data.get("direction", prediction_direction)
+                        confidence = float(content_data.get("confidence", confidence))
+                        model_probability = float(content_data.get("probability", model_probability))
+
+                    elif tool_name == "calculate_risk":
+                        kelly_fraction = float(content_data.get("recommended_position_size", kelly_fraction))
+
+            # Inspect tool_calls in assistant messages to get the arguments passed to calculate_risk
+            for msg in response.get("messages", []):
+                if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                    for tc in msg["tool_calls"]:
+                        func = tc.get("function", {})
+                        if func.get("name") == "calculate_risk":
+                            args_str = func.get("arguments", "{}")
+                            try:
+                                args = json.loads(args_str)
+                                market_probability = float(args.get("market_probability", market_probability))
+                            except Exception:
+                                pass
 
             prediction_data = {
                 "symbol": symbol,
                 "interval": interval,
-                "prediction_direction": prediction_result["direction"],
-                "confidence": prediction_result["confidence"],
-                "model_probability": prediction_result["probability"],
-                "market_probability": market_prob,
-                "kelly_fraction": risk_result["recommended_position_size"],
-                "reasoning": "",
+                "prediction_direction": prediction_direction,
+                "confidence": confidence,
+                "model_probability": model_probability,
+                "market_probability": market_probability,
+                "kelly_fraction": kelly_fraction,
+                "reasoning": reasoning,
             }
             db_pred = await repo.save_prediction(prediction_data)
 
             self.memory.add_prediction(
                 symbol=symbol,
                 interval=interval,
-                prediction_direction=prediction_result["direction"],
-                confidence=prediction_result["confidence"],
-                model_probability=prediction_result["probability"],
-                market_probability=market_prob,
-                kelly_fraction=risk_result["recommended_position_size"],
-                reasoning="",
+                prediction_direction=prediction_direction,
+                confidence=confidence,
+                model_probability=model_probability,
+                market_probability=market_probability,
+                kelly_fraction=kelly_fraction,
+                reasoning=reasoning,
             )
 
             overall_elapsed = time.time() - overall_start
-            logger.info(f"HermesSupervisor: Flow completed in {overall_elapsed:.2f}s")
+            logger.info(f"HermesSupervisor: Flow completed agentically in {overall_elapsed:.2f}s")
 
             return {
                 "prediction_id": db_pred.id,
                 "symbol": symbol,
-                "prediction": prediction_result["direction"],
-                "confidence": prediction_result["confidence"],
-                "market_probability": market_prob,
-                "kelly": risk_result["recommended_position_size"],
-                "reasoning": "",
+                "prediction": prediction_direction,
+                "confidence": confidence,
+                "market_probability": market_probability,
+                "kelly": kelly_fraction,
+                "reasoning": reasoning,
             }
 
         except Exception as e:
             elapsed = time.time() - overall_start
             logger.error(f"HermesSupervisor: Flow failed after {elapsed:.2f}s: {e}")
             raise
-
-    async def _step_search(self, symbol: str, timeout: float = 30.0):
-        logger.info("HermesSupervisor: Step 1 - Searching prediction markets (timeout=%ss)", timeout)
-        start = time.time()
-        markets = await asyncio.wait_for(self.search_agent.execute(), timeout=timeout)
-        elapsed = time.time() - start
-        logger.info(f"HermesSupervisor: Step 1 completed in {elapsed:.2f}s, found {len(markets)} markets")
-        return markets
 
     def _resolve_market_probability(self, markets: list, symbol: str):
         base_asset = symbol.upper().replace("USDT", "").replace("BUSD", "")
@@ -108,31 +170,3 @@ class HermesSupervisorAgent:
         best = matching_markets[0]
         logger.info(f"HermesSupervisor: Found matching market: '{best.get('question')}' prob={best['market_probability']}")
         return best["market_probability"], best.get("question", "")
-
-    async def _step_market_data(self, symbol: str, interval: str, limit: int):
-        logger.info("HermesSupervisor: Step 2 - Fetching market data")
-        start = time.time()
-        df = await self.market_data_agent.execute(symbol, interval, limit)
-        if not df.empty:
-            elapsed = time.time() - start
-            logger.info(f"HermesSupervisor: Step 2 completed in {elapsed:.2f}s, got {len(df)} candles")
-            return df
-        elapsed = time.time() - start
-        logger.error(f"HermesSupervisor: Step 2 failed after {elapsed:.2f}s - empty DataFrame")
-        raise ValueError(f"No OHLCV data returned for symbol {symbol}")
-
-    async def _step_prediction(self, df):
-        logger.info("HermesSupervisor: Step 3 - Running Kronos prediction")
-        start = time.time()
-        result = await self.prediction_agent.execute(df)
-        elapsed = time.time() - start
-        logger.info(f"HermesSupervisor: Step 3 completed in {elapsed:.2f}s -> {result['direction']} ({result['confidence']:.4f})")
-        return result
-
-    async def _step_risk(self, market_prob: float, model_prob: float):
-        logger.info("HermesSupervisor: Step 4 - Calculating risk")
-        start = time.time()
-        result = await self.risk_agent.execute(market_prob, model_prob)
-        elapsed = time.time() - start
-        logger.info(f"HermesSupervisor: Step 4 completed in {elapsed:.3f}s -> {result['recommended_direction']} ({result['recommended_position_size']:.4f})")
-        return result

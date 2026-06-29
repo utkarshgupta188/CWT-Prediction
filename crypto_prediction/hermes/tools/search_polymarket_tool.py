@@ -9,23 +9,29 @@ SEARCH_POLYMARKET_SCHEMA = {
     "parameters": {
         "type": "object",
         "properties": {
+            "query": {
+                "type": "string",
+                "description": "Optional search term to filter markets (e.g., BTC, ETH)",
+                "default": ""
+            },
             "limit": {
                 "type": "integer",
                 "description": "Maximum number of markets to fetch",
-                "default": 20
+                "default": 3
             }
         }
     }
 }
 
-async def _search_polymarket_handler(args):
-    limit = int(args.get("limit", 20))
-    logger.info("HermesTool[search_polymarket]: Started")
+async def _search_polymarket_handler(args, **kwargs):
+    limit = min(int(args.get("limit", 3)), 5)
+    query = args.get("query", "").strip() or None
+    logger.info(f"HermesTool[search_polymarket]: Started (query={query})")
     start = time.time()
     try:
         from crypto_prediction.services.polymarket import PolymarketService
         service = PolymarketService()
-        markets = await service.get_active_markets(limit=limit, max_retries=1)
+        markets = await service.get_active_markets(query=query, limit=limit, max_retries=1)
         elapsed = time.time() - start
         logger.info(f"HermesTool[search_polymarket]: Finished in {elapsed:.2f}s, found {len(markets)} markets")
         return json.dumps({"success": True, "markets": markets, "platform": "Polymarket"}, default=str)
@@ -36,7 +42,7 @@ async def _search_polymarket_handler(args):
 
 registry.register(
     name="search_polymarket",
-    toolset="hermes-cli",
+    toolset="crypto-prediction",
     schema=SEARCH_POLYMARKET_SCHEMA,
     handler=_search_polymarket_handler,
     is_async=True,

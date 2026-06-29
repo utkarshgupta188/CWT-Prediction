@@ -15,18 +15,14 @@ graph TD
     Client -->|GET /markets | MarketRoute[routes/market.py]
     Client -->|POST /feedback | PredictRoute
 
-    PredictRoute -->|Orchestrate via | HermesSup[HermesSupervisorAgent]
-    HermesSup -->|reasoning via| AIAgent[Hermes AIAgent<br/>OpenRouter LLM]
-    HermesSup -->|tool: search_polymarket<br/>tool: search_kalshi| Search[HermesSearchAgent]
-    HermesSup -->|tool: get_market_data| MarketData[HermesMarketDataAgent]
-    HermesSup -->|tool: get_prediction| PredictAgent[HermesPredictionAgent]
-    HermesSup -->|tool: calculate_risk| Risk[HermesRiskAgent]
+    PredictRoute -->|Invoke | HermesSup[HermesSupervisorAgent]
+    HermesSup -->|run_conversation | AIAgent[Hermes AIAgent<br/>OpenRouter LLM]
+    AIAgent -->|tool: search_polymarket| Polymarket[PolymarketService]
+    AIAgent -->|tool: search_kalshi| Kalshi[KalshiService]
+    AIAgent -->|tool: get_prediction| Kronos[KronosService]
+    AIAgent -->|tool: calculate_risk| Kelly[KellyCalculator]
     
-    Search -->|Gamma API| Polymarket[PolymarketService]
-    Search -->|Trade API v2| Kalshi[KalshiService]
-    MarketData -->|Public OHLCV| Binance[BinanceProvider]
-    PredictAgent -->|Predict| Kronos[KronosService]
-    Risk -->|Calculate Fraction| Kelly[KellyCalculator]
+    Kronos -->|Fetch candles| Binance[BinanceProvider]
     
     HermesSup -->|store prediction| DB[(SQLite DB)]
 ```
@@ -123,47 +119,35 @@ No agent has access to tools outside its responsibility.
 
 #### Orchestration Flow (HermesSupervisorAgent)
 
+The prediction pipeline runs entirely inside a true agentic conversation loop driven by `AIAgent.run_conversation(prompt)`:
+
 ```
-1. _step_search()        → HermesSearchAgent.execute()
-                            → registry.dispatch("search_polymarket", ...)
-                            → registry.dispatch("search_kalshi", ...)
-                            → returns normalized market list
-
-2. _resolve_market_probability(markets, symbol)
-                            → matches base asset (e.g. BTC) to market
-                            → returns market_prob, question
-
-3. _step_market_data()    → HermesMarketDataAgent.execute(symbol, interval, limit)
-                            → registry.dispatch("get_market_data", ...)
-                            → BinanceProvider.get_klines()
-                            → returns pd.DataFrame
-
-4. _step_prediction(df)   → HermesPredictionAgent.execute(df)
-                            → registry.dispatch("get_prediction", ...)
-                            → KronosService.predict_next_movement()
-                            → returns {direction, confidence, probability, price}
-
-5. _step_risk(market_prob, model_prob)
-                            → HermesRiskAgent.execute(market_prob, model_prob)
-                            → registry.dispatch("calculate_risk", ...)
-                            → KellyCalculator.calculate()
-                            → returns {edge, kelly_fraction, position_size, risk_level}
-
-6. _step_reasoning()      → AIAgent.run_conversation(prompt)
-                            → Hermes AIAgent (OpenRouter LLM)
-                            → returns reasoning text
-                            No tools enabled for this step — pure LLM explanation.
-
-7. repo.save_prediction() → stores to SQLite
-   memory.add_prediction() → updates HermesMemory
+1. supervisor.execute_prediction_flow(symbol, interval, limit)
+   → Construct agentic prompt containing symbol, interval, and parsed asset name.
+   → Invoke agent.run_conversation(prompt) with the "crypto-prediction" toolset.
+   
+2. AIAgent ReAct Loop (Autonomous Tool Execution)
+   → Choose and call search_polymarket and search_kalshi to scan prediction markets.
+   → Choose and call get_prediction to forecast price movement.
+     → get_prediction fetches Binance klines internally and runs Kronos inference.
+   → Choose and call calculate_risk to compute Kelly sizing based on model and market odds.
+   
+3. Trajectory Parsing and Execution State Extraction
+   → Loop through response["messages"] to identify tool outputs and assistant parameters.
+   → Extract:
+     a. direction, confidence, model_probability (from get_prediction tool response)
+     b. market_probability (from calculate_risk tool call arguments)
+     c. kelly_fraction (from calculate_risk tool response)
+     d. reasoning (from assistant's reasoning_content and text blocks)
+     
+4. repo.save_prediction() → stores prediction entry to SQLite DB
+5. memory.add_prediction() → updates HermesMemory with the current run details
 ```
 
-#### Error Handling
-- Each step is wrapped in try/except with logging.
-- `_step_search` returns `[]` on failure — the pipeline continues with `market_prob=0.5`.
-- `_step_market_data` raises on empty DataFrame — pipeline halts.
-- `_step_prediction`, `_step_risk` raise on failure — pipeline halts.
-- `_step_reasoning` falls back to deterministic template if AIAgent is unavailable.
+#### Error Handling and Fallbacks
+- The supervisor runs in a `try/except` block with execution-time logging.
+- If the agent loop fails or OpenRouter credentials/credits are depleted before completing, the supervisor falls back to extracting whatever partial tool executions occurred in the conversation history, defaulting missing values gracefully (e.g. `market_probability=0.5` or `prediction=NONE`).
+- Internal network/API failures inside any tool are packaged as standard JSON errors inside the tool response, allowing the agent to reason about the error and continue.
 
 ### 3.2 Hermes Memory (`crypto_prediction/hermes/memory.py`)
 
@@ -214,8 +198,8 @@ Maximum 20 entries by default. Passed into `AIAgent.run_conversation()` prompt f
 | Market Data | `get_market_data` | `BinanceProvider.get_klines()` | `providers/binance_provider.py` |
 | Prediction | `get_prediction` | `predict_next_movement()` | `prediction/kronos_service.py` |
 | Risk | `calculate_risk` | `KellyCalculator.calculate()` | `risk/kelly.py` |
-| Polymarket Search | `search_polymarket` | `PolymarketService.get_active_markets()` | `services/polymarket.py` |
-| Kalshi Search | `search_kalshi` | `KalshiService.get_active_markets()` | `services/kalshi.py` |
+| Polymarket Search | `search_polymarket` | `PolymarketService.get_active_markets(query=...)` | `services/polymarket.py` |
+| Kalshi Search | `search_kalshi` | `KalshiService.get_active_markets(query=...)` | `services/kalshi.py` |
 | Feedback | `save_feedback` | `PredictionRepository.save_feedback()` | `database/repository.py` |
 
 ---

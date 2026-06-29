@@ -10,22 +10,41 @@ class PolymarketService:
     def __init__(self, base_url: str = "https://gamma-api.polymarket.com"):
         self.base_url = base_url
 
-    async def get_active_markets(self, limit: int = 20, max_retries: int = 5) -> List[dict]:
+    async def get_active_markets(self, query: str = None, limit: int = 20, max_retries: int = 5) -> List[dict]:
         """
         Fetch active markets from Polymarket and normalize them.
         """
-        endpoint = f"{self.base_url}/markets"
-        params = {
-            "active": "true",
-            "closed": "false",
-            "limit": limit,
-        }
+        if query:
+            endpoint = f"{self.base_url}/public-search"
+            params = {
+                "q": query,
+            }
+        else:
+            endpoint = f"{self.base_url}/markets"
+            params = {
+                "active": "true",
+                "closed": "false",
+                "limit": limit,
+            }
         
-        logger.info("Fetching markets from Polymarket...")
+        logger.info(f"Fetching markets from Polymarket (query={query})...")
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await request_with_retry(client, "GET", endpoint, params=params, max_retries=max_retries)
-                markets_data = response.json()
+                data = response.json()
+                if query:
+                    events = data.get("events", [])
+                    markets_data = []
+                    for event in events:
+                        if event.get("closed") is True or str(event.get("closed")).lower() == "true":
+                            continue
+                        for m in event.get("markets", []):
+                            if m.get("closed") is True or str(m.get("closed")).lower() == "true":
+                                continue
+                            markets_data.append(m)
+                    markets_data = markets_data[:limit]
+                else:
+                    markets_data = data
         except Exception as e:
             logger.error(f"Failed to fetch from Polymarket: {e}")
             return []
@@ -59,6 +78,12 @@ class PolymarketService:
                 # Get market probability (outcomePrices contains prices of Yes and No, e.g. ["0.65", "0.35"])
                 # We default to the first outcome price (Yes)
                 outcome_prices = m.get("outcomePrices")
+                if isinstance(outcome_prices, str):
+                    try:
+                        import json
+                        outcome_prices = json.loads(outcome_prices)
+                    except Exception:
+                        pass
                 market_prob = 0.5
                 if outcome_prices and len(outcome_prices) > 0:
                     try:

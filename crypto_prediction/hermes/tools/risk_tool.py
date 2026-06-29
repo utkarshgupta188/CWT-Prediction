@@ -22,7 +22,7 @@ RISK_SCHEMA = {
     }
 }
 
-def _risk_handler(args):
+def _risk_handler(args, **kwargs):
     market_prob = float(args.get("market_probability", 0.5))
     model_prob = float(args.get("model_probability", 0.5))
     logger.info(f"HermesTool[calculate_risk]: Started (market={market_prob:.4f}, model={model_prob:.4f})")
@@ -40,7 +40,7 @@ def _risk_handler(args):
 
 registry.register(
     name="calculate_risk",
-    toolset="hermes-cli",
+    toolset="crypto-prediction",
     schema=RISK_SCHEMA,
     handler=_risk_handler,
     is_async=False,

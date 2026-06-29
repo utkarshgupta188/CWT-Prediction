@@ -27,7 +27,7 @@ MARKET_DATA_SCHEMA = {
     }
 }
 
-async def _market_data_handler(args):
+async def _market_data_handler(args, **kwargs):
     symbol = args.get("symbol", "").upper()
     interval = args.get("interval", "5m")
     limit = min(int(args.get("limit", 1000)), 1000)
@@ -39,9 +39,13 @@ async def _market_data_handler(args):
         df = await provider.get_klines(symbol, interval, limit)
         elapsed = time.time() - start
         logger.info(f"HermesTool[get_market_data]: Finished in {elapsed:.2f}s, got {len(df)} candles")
+        
+        # Save tokens by only returning the last 5 candles in detail, and a summary
+        latest_candles = df.tail(5).to_dict(orient="records")
         return json.dumps({
             "success": True,
-            "data": df.to_dict(orient="records"),
+            "message": f"Successfully fetched {len(df)} candles for {symbol} ({interval}). Showing latest 5 candles.",
+            "latest_candles": latest_candles,
             "columns": list(df.columns),
             "shape": list(df.shape),
             "symbol": symbol,
@@ -54,7 +58,7 @@ async def _market_data_handler(args):
 
 registry.register(
     name="get_market_data",
-    toolset="hermes-cli",
+    toolset="crypto-prediction",
     schema=MARKET_DATA_SCHEMA,
     handler=_market_data_handler,
     is_async=True,

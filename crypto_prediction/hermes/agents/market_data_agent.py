@@ -18,17 +18,9 @@ class HermesMarketDataAgent:
         logger.info(f"HermesMarketDataAgent: Started for {symbol} ({interval}, limit={limit})")
         start = time.time()
         try:
-            result_str = registry.dispatch("get_market_data", {
-                "symbol": symbol,
-                "interval": interval,
-                "limit": limit
-            })
-            result = json.loads(result_str)
-            if "error" in result:
-                raise ValueError(result["error"])
-            df = pd.DataFrame(result["data"])
-            if "timestamp" in df.columns:
-                df["timestamp"] = pd.to_datetime(df["timestamp"])
+            from crypto_prediction.providers.binance_provider import BinanceProvider
+            provider = BinanceProvider()
+            df = await provider.get_klines(symbol, interval, limit)
             for col in ["open", "high", "low", "close", "volume"]:
                 if col in df.columns:
                     df[col] = df[col].astype(float)

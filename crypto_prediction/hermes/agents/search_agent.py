@@ -13,15 +13,30 @@ class HermesSearchAgent:
     def allowed_tools(self) -> List[str]:
         return list(ALLOWED_TOOLS)
 
-    async def execute(self, limit_per_platform: int = 10, per_call_timeout: float = 25.0) -> List[dict]:
-        logger.info("HermesSearchAgent: Started")
+    async def execute(self, symbol: str = None, limit_per_platform: int = 10, per_call_timeout: float = 25.0) -> List[dict]:
+        logger.info(f"HermesSearchAgent: Started (symbol={symbol})")
         start = time.time()
         tasks = []
+        
+        query = ""
+        if symbol:
+            base_asset = symbol.upper().replace("USDT", "").replace("BUSD", "")
+            # Map abbreviation to full name for better search results on Polymarket
+            asset_mapping = {
+                "BTC": "Bitcoin",
+                "ETH": "Ethereum",
+                "SOL": "Solana",
+                "DOGE": "Dogecoin",
+                "ADA": "Cardano",
+                "XRP": "Ripple",
+            }
+            query = asset_mapping.get(base_asset, base_asset)
+
         try:
             loop = asyncio.get_running_loop()
             async def _dispatch(platform: str):
                 return await asyncio.wait_for(
-                    loop.run_in_executor(None, registry.dispatch, platform, {"limit": limit_per_platform}),
+                    loop.run_in_executor(None, registry.dispatch, platform, {"query": query, "limit": limit_per_platform}),
                     timeout=per_call_timeout,
                 )
 

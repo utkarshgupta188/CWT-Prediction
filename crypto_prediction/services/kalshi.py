@@ -11,17 +11,17 @@ class KalshiService:
     def __init__(self, base_url: str = "https://external-api.kalshi.com/trade-api/v2"):
         self.base_url = base_url
 
-    async def get_active_markets(self, limit: int = 20, max_retries: int = 5) -> List[dict]:
+    async def get_active_markets(self, query: str = None, limit: int = 20, max_retries: int = 5) -> List[dict]:
         """
         Fetch open markets from Kalshi and normalize them.
         """
         endpoint = f"{self.base_url}/markets"
         params = {
             "status": "open",
-            "limit": limit
+            "limit": limit if not query else 500
         }
         
-        logger.info("Fetching markets from Kalshi...")
+        logger.info(f"Fetching markets from Kalshi (query={query})...")
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await request_with_retry(client, "GET", endpoint, params=params, max_retries=max_retries)
@@ -52,6 +52,10 @@ class KalshiService:
                     asset = "SOL"
                 elif "doge" in title_lower or "doge" in ticker_lower:
                     asset = "DOGE"
+
+                if query and asset != query.upper():
+                    continue
+
 
                 # Get market probability (yes_ask/no_ask or floor/cap price ranges if available, but Kalshi uses cents for price, e.g. 0 to 100)
                 # We can estimate probability as yes_bid or yes_ask / 100 or simply a placeholder if not present.

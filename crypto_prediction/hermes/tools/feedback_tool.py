@@ -23,7 +23,7 @@ FEEDBACK_SCHEMA = {
     }
 }
 
-async def _feedback_handler(args):
+async def _feedback_handler(args, **kwargs):
     prediction_id = int(args.get("prediction_id", 0))
     actual_movement = args.get("actual_movement", "").upper()
     logger.info(f"HermesTool[save_feedback]: Started for prediction {prediction_id} -> {actual_movement}")
@@ -68,7 +68,7 @@ async def _feedback_handler(args):
 
 registry.register(
     name="save_feedback",
-    toolset="hermes-cli",
+    toolset="crypto-prediction",
     schema=FEEDBACK_SCHEMA,
     handler=_feedback_handler,
     is_async=True,
