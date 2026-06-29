@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto Prediction Research System</title>
+    <meta name="description" content="A multi-agent crypto prediction research dashboard powered by Kronos and Kelly Criterion.">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --card-bg: rgba(17, 24, 39, 0.7);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --primary: #8b5cf6;
+            --primary-glow: rgba(139, 92, 246, 0.4);
+            --secondary: #06b6d4;
+            --accent: #ec4899;
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(139, 92, 246, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(6, 182, 212, 0.15) 0px, transparent 50%);
+            min-height: 100vh;
+            padding-bottom: 2rem;
+            overflow-x: hidden;
+        }
+
+        h1, h2, h3, h4 {
+            font-family: 'Outfit', sans-serif;
+            font-weight: 700;
+        }
+
+        header {
+            border-bottom: 1px solid var(--card-border);
+            padding: 1.25rem 2rem;
+            backdrop-filter: blur(12px);
+            background: rgba(11, 15, 25, 0.8);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo-container {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .logo-icon {
+            font-size: 1.75rem;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: pulse 2s infinite alternate;
+        }
+
+        .logo-text {
+            font-size: 1.5rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            background: linear-gradient(to right, #ffffff, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .container {
+            max-width: 1300px;
+            margin: 2rem auto;
+            padding: 0 1.5rem;
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 2rem;
+        }
+
+        @media (min-width: 1024px) {
+            .container {
+                grid-template-columns: 350px 1fr;
+            }
+        }
+
+        /* Glassmorphism Card style */
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 1.75rem;
+            backdrop-filter: blur(16px);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .card:hover {
+            border-color: rgba(139, 92, 246, 0.3);
+            box-shadow: 0 12px 40px 0 rgba(139, 92, 246, 0.1);
+        }
+
+        .card-title {
+            font-size: 1.25rem;
+            margin-bottom: 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            border-bottom: 1px solid var(--card-border);
+            padding-bottom: 0.75rem;
+        }
+
+        .card-title i {
+            color: var(--secondary);
+        }
+
+        /* Form Controls */
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.875rem;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+
+        .input-control {
+            width: 100%;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            color: var(--text-main);
+            font-family: inherit;
+            font-size: 0.95rem;
+            transition: all 0.2s;
+        }
+
+        .input-control:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px var(--primary-glow);
+        }
+
+        .btn {
+            width: 100%;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 0.85rem 1.5rem;
+            font-weight: 600;
+            font-family: 'Outfit', sans-serif;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px 0 var(--primary-glow);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-item {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 1.25rem;
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-value {
+            font-size: 1.75rem;
+            font-weight: 700;
+            font-family: 'Outfit', sans-serif;
+            background: linear-gradient(to right, #ffffff, #cbd5e1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* Prediction Result Box */
+        .result-box {
+            display: none;
+            animation: fadeIn 0.4s ease-out forwards;
+        }
+
+        .direction-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1.25rem;
+            border-radius: 9999px;
+            font-weight: 700;
+            font-family: 'Outfit', sans-serif;
+            text-transform: uppercase;
+            font-size: 1.1rem;
+            margin-bottom: 1rem;
+        }
+
+        .direction-badge.up {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--success);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .direction-badge.down {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--danger);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .reasoning-text {
+            background: rgba(0, 0, 0, 0.2);
+            border-left: 3px solid var(--primary);
+            padding: 1rem;
+            border-radius: 0 8px 8px 0;
+            font-size: 0.95rem;
+            line-height: 1.6;
+            margin-top: 1rem;
+            color: #d1d5db;
+        }
+
+        /* Lists and Tables */
+        .list-container {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .market-item {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 1rem 1.25rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.2s;
+        }
+
+        .market-item:hover {
+            background: rgba(255, 255, 255, 0.04);
+            transform: translateX(4px);
+        }
+
+        .market-info {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .market-question {
+            font-weight: 500;
+            font-size: 0.95rem;
+        }
+
+        .market-meta {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            display: flex;
+            gap: 1rem;
+        }
+
+        .platform-badge {
+            background: rgba(6, 182, 212, 0.15);
+            color: var(--secondary);
+            padding: 0.15rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .probability-value {
+            font-family: 'Outfit', sans-serif;
+            font-weight: 700;
+            font-size: 1.15rem;
+            color: var(--warning);
+        }
+
+        /* History Table */
+        .history-table-wrapper {
+            overflow-x: auto;
+            margin-top: 1rem;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+        }
+
+        th, td {
+            padding: 1rem;
+            border-bottom: 1px solid var(--card-border);
+            font-size: 0.9rem;
+        }
+
+        th {
+            color: var(--text-muted);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.5px;
+        }
+
+        /* Animations */
+        @keyframes pulse {
+            0% { filter: drop-shadow(0 0 2px var(--primary-glow)); }
+            100% { filter: drop-shadow(0 0 10px var(--primary)); }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Spinner */
+        .spinner {
+            display: none;
+            width: 2rem;
+            height: 2rem;
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            border-top-color: var(--primary);
+            animation: spin 1s linear infinite;
+            margin: 2rem auto;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo-container">
+            <i class="fa-solid fa-brain-circuit logo-icon"></i>
+            <span class="logo-text">HERMES PREDICT</span>
+        </div>
+        <div style="font-size: 0.85rem; color: var(--text-muted)">
+            <i class="fa-solid fa-circle" style="color: var(--success); font-size: 0.65rem; margin-right: 0.25rem;"></i> System Live
+        </div>
+    </header>
+
+    <main class="container">
+        
+        <!-- Left Panel: Control Form & Stats -->
+        <div style="display: flex; flex-direction: column; gap: 2rem;">
+            
+            <div class="card">
+                <h2 class="card-title"><i class="fa-solid fa-magnifying-glass-chart"></i> Research Console</h2>
+                <form id="predict-form">
+                    <div class="form-group">
+                        <label for="symbol">Trading Pair</label>
+                        <select class="input-control" id="symbol">
+                            <option value="BTCUSDT">BTC/USDT</option>
+                            <option value="ETHUSDT">ETH/USDT</option>
+                            <option value="SOLUSDT">SOL/USDT</option>
+                            <option value="DOGEUSDT">DOGE/USDT</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="interval">Candlestick Interval</label>
+                        <select class="input-control" id="interval">
+                            <option value="5m">5 Minutes</option>
+                            <option value="15m">15 Minutes</option>
+                            <option value="1h">1 Hour</option>
+                            <option value="4h">4 Hours</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="limit">Historical Lookback (Candles)</label>
+                        <input class="input-control" type="number" id="limit" value="1000" min="100" max="1000">
+                    </div>
+                    <button class="btn" type="submit" id="submit-btn">
+                        <i class="fa-solid fa-bolt"></i> Run Agent Pipeline
+                    </button>
+                </form>
+            </div>
+
+            <div class="card">
+                <h2 class="card-title"><i class="fa-solid fa-chart-line"></i> Statistics</h2>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <div class="stat-label">Model Accuracy</div>
+                        <div class="stat-value" id="stat-accuracy">0.0%</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Total Evaluated</div>
+                        <div class="stat-value" id="stat-total">0</div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Right Panel: Results, active markets & history -->
+        <div style="display: flex; flex-direction: column; gap: 2rem;">
+            
+            <!-- Dynamic Result Card -->
+            <div class="card result-box" id="result-card">
+                <h2 class="card-title"><i class="fa-solid fa-square-poll-vertical"></i> Analysis Outcome</h2>
+                <div id="result-loading" class="spinner"></div>
+                <div id="result-content">
+                    <div class="direction-badge" id="direction-badge">UP</div>
+                    
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1.5rem; margin: 1.5rem 0;">
+                        <div>
+                            <span style="font-size: 0.85rem; color: var(--text-muted);">Model Probability</span>
+                            <h3 style="font-size: 1.5rem; margin-top: 0.25rem;" id="res-model-prob">0%</h3>
+                        </div>
+                        <div>
+                            <span style="font-size: 0.85rem; color: var(--text-muted);">Market Odds</span>
+                            <h3 style="font-size: 1.5rem; margin-top: 0.25rem;" id="res-market-prob">0%</h3>
+                        </div>
+                        <div>
+                            <span style="font-size: 0.85rem; color: var(--text-muted);">Kelly Allocation</span>
+                            <h3 style="font-size: 1.5rem; margin-top: 0.25rem; color: var(--secondary);" id="res-kelly">0.00%</h3>
+                        </div>
+                    </div>
+                    
+                    <div class="reasoning-text" id="res-reasoning">
+                        Generating research summary...
+                    </div>
+                </div>
+            </div>
+
+            <!-- Active Prediction Markets -->
+            <div class="card">
+                <h2 class="card-title"><i class="fa-solid fa-shop"></i> Prediction Markets</h2>
+                <div class="list-container" id="markets-list">
+                    <!-- Loaded dynamically -->
+                    <div class="spinner" style="display: block;"></div>
+                </div>
+            </div>
+
+            <!-- Prediction Log / History -->
+            <div class="card">
+                <h2 class="card-title"><i class="fa-solid fa-clock-rotate-left"></i> Research History</h2>
+                <div class="history-table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Symbol</th>
+                                <th>Prediction</th>
+                                <th>Model Prob</th>
+                                <th>Market Prob</th>
+                                <th>Kelly Size</th>
+                                <th>Verification</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-list">
+                            <!-- Loaded dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+
+    </main>
+
+    <script>
+        const API_BASE = "";
+
+        // Form Submit
+        document.getElementById('predict-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const submitBtn = document.getElementById('submit-btn');
+            const resultCard = document.getElementById('result-card');
+            const resultContent = document.getElementById('result-content');
+            const spinner = document.getElementById('result-loading');
+            
+            submitBtn.disabled = true;
+            resultCard.style.display = 'block';
+            resultContent.style.opacity = '0.3';
+            spinner.style.display = 'block';
+
+            const payload = {
+                symbol: document.getElementById('symbol').value,
+                interval: document.getElementById('interval').value,
+                limit: parseInt(document.getElementById('limit').value)
+            };
+
+            try {
+                const res = await fetch(`${API_BASE}/predict`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                const data = await res.json();
+                
+                if (res.ok) {
+                    // Update content
+                    const badge = document.getElementById('direction-badge');
+                    badge.innerText = data.prediction;
+                    badge.className = `direction-badge ${data.prediction.toLowerCase()}`;
+                    
+                    document.getElementById('res-model-prob').innerText = `${(data.confidence * 100).toFixed(1)}%`;
+                    document.getElementById('res-market-prob').innerText = `${(data.market_probability * 100).toFixed(1)}%`;
+                    document.getElementById('res-kelly').innerText = `${(data.kelly * 100).toFixed(2)}%`;
+                    document.getElementById('res-reasoning').innerText = data.reasoning;
+                } else {
+                    document.getElementById('res-reasoning').innerText = `Error: ${data.detail || 'Failed to execute prediction'}`;
+                }
+            } catch (err) {
+                document.getElementById('res-reasoning').innerText = `Network Error: ${err.message}`;
+            } finally {
+                submitBtn.disabled = false;
+                resultContent.style.opacity = '1';
+                spinner.style.display = 'none';
+                loadHistory();
+            }
+        });
+
+        // Load active prediction markets
+        async function loadMarkets() {
+            const list = document.getElementById('markets-list');
+            try {
+                const res = await fetch(`${API_BASE}/markets`);
+                const data = await res.json();
+                
+                list.innerHTML = '';
+                if (data.length === 0) {
+                    list.innerHTML = '<div style="color: var(--text-muted); text-align: center;">No active markets found.</div>';
+                    return;
+                }
+                
+                data.slice(0, 5).forEach(m => {
+                    const item = document.createElement('div');
+                    item.className = 'market-item';
+                    item.innerHTML = `
+                        <div class="market-info">
+                            <div class="market-question">${m.question}</div>
+                            <div class="market-meta">
+                                <span class="platform-badge">${m.platform}</span>
+                                <span>Asset: ${m.asset}</span>
+                            </div>
+                        </div>
+                        <div class="probability-value">${(m.market_probability * 100).toFixed(0)}%</div>
+                    `;
+                    list.appendChild(item);
+                });
+            } catch (err) {
+                list.innerHTML = `<div style="color: var(--danger); text-align: center;">Error loading markets: ${err.message}</div>`;
+            }
+        }
+
+        // Load prediction log history
+        async function loadHistory() {
+            const list = document.getElementById('history-list');
+            try {
+                const res = await fetch(`${API_BASE}/history`);
+                const data = await res.json();
+                
+                list.innerHTML = '';
+                data.forEach(h => {
+                    const tr = document.createElement('tr');
+                    
+                    let verificationCol = '';
+                    if (h.feedback) {
+                        const correctClass = h.feedback.correct ? 'color: var(--success)' : 'color: var(--danger)';
+                        verificationCol = `<span style="font-weight: 600; ${correctClass}">${h.feedback.correct ? 'CORRECT' : 'INCORRECT'}</span>`;
+                    } else {
+                        verificationCol = `
+                            <div style="display: flex; gap: 0.25rem;">
+                                <button onclick="submitFeedback(${h.id}, 'UP')" style="padding: 2px 6px; font-size: 0.75rem; background: rgba(16,185,129,0.15); color: var(--success); border: 1px solid rgba(16,185,129,0.3); cursor:pointer; border-radius:4px;">UP</button>
+                                <button onclick="submitFeedback(${h.id}, 'DOWN')" style="padding: 2px 6px; font-size: 0.75rem; background: rgba(239,68,68,0.15); color: var(--danger); border: 1px solid rgba(239,68,68,0.3); cursor:pointer; border-radius:4px;">DOWN</button>
+                            </div>
+                        `;
+                    }
+
+                    const timeStr = new Date(h.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+                    tr.innerHTML = `
+                        <td>${timeStr}</td>
+                        <td style="font-weight: 600;">${h.symbol}</td>
+                        <td><span class="platform-badge" style="background: ${h.prediction === 'UP' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)'}; color: ${h.prediction === 'UP' ? 'var(--success)' : 'var(--danger)'}">${h.prediction}</span></td>
+                        <td>${(h.confidence * 100).toFixed(0)}%</td>
+                        <td>${(h.market_probability * 100).toFixed(0)}%</td>
+                        <td>${(h.kelly * 100).toFixed(1)}%</td>
+                        <td>${verificationCol}</td>
+                    `;
+                    list.appendChild(tr);
+                });
+            } catch (err) {
+                list.innerHTML = `<tr><td colspan="7" style="color: var(--danger); text-align: center;">Error loading history.</td></tr>`;
+            }
+            loadStats();
+        }
+
+        // Submit Feedback
+        async function submitFeedback(id, movement) {
+            try {
+                const res = await fetch(`${API_BASE}/feedback`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prediction_id: id, actual_movement: movement })
+                });
+                if (res.ok) {
+                    loadHistory();
+                }
+            } catch (err) {
+                console.error("Error submitting feedback:", err);
+            }
+        }
+
+        // Load stats
+        async function loadStats() {
+            try {
+                const res = await fetch(`${API_BASE}/statistics`);
+                const data = await res.json();
+                
+                const accuracy = data.accuracy !== undefined ? `${(data.accuracy * 100).toFixed(1)}%` : '0.0%';
+                const total = data.total_predictions !== undefined ? data.total_predictions : 0;
+                
+                document.getElementById('stat-accuracy').innerText = accuracy;
+                document.getElementById('stat-total').innerText = total;
+            } catch (err) {
+                console.error("Error loading stats:", err);
+            }
+        }
+
+        // Initial Load
+        loadMarkets();
+        loadHistory();
+    </script>
+</body>
+</html>
