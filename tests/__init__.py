@@ -1,1 +1,1 @@
-# empty init for pytest module discovery
+# CWT prediction test package

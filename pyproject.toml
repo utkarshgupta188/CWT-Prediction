@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cwt-prediction"
+version = "0.1.0"
+description = "A Hermes Agent-powered crypto short-term prediction system using Kronos"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pandas>=2.0.0",
+    "numpy>=1.24.0",
+    "torch>=2.0.0",
+    "requests>=2.31.0",
+    "python-dotenv>=1.0.0",
+    "httpx>=0.27.0",
+    "einops>=0.8.0",
+    "huggingface-hub>=0.20.0",
+    "safetensors>=0.4.0",
+    "tqdm>=4.66.0",
+    "aiosqlite>=0.20.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "respx>=0.21.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cwt_prediction*"]
