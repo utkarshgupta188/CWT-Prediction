@@ -1,4 +1,5 @@
 import httpx
+import json as json_module
 from typing import List, Dict
 from crypto_prediction.utils.helpers import request_with_retry
 from crypto_prediction.utils.logger import setup_logger
@@ -6,13 +7,15 @@ from crypto_prediction.schemas.config import settings
 
 logger = setup_logger(settings.LOG_LEVEL)
 
+
 class PolymarketService:
     def __init__(self, base_url: str = "https://gamma-api.polymarket.com"):
         self.base_url = base_url
 
-    async def get_active_markets(self, query: str = None, limit: int = 20, max_retries: int = 5) -> List[dict]:
+    async def get_active_markets(self, query: str = None, limit: int = 20, max_retries: int = 2) -> List[dict]:
         """
         Fetch active markets from Polymarket and normalize them.
+        Optimized for parallel execution with lower retry count and timeouts.
         """
         if query:
             endpoint = f"{self.base_url}/public-search"
@@ -26,10 +29,10 @@ class PolymarketService:
                 "closed": "false",
                 "limit": limit,
             }
-        
+
         logger.info(f"Fetching markets from Polymarket (query={query})...")
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=12.0) as client:
                 response = await request_with_retry(client, "GET", endpoint, params=params, max_retries=max_retries)
                 data = response.json()
                 if query:
@@ -46,7 +49,7 @@ class PolymarketService:
                 else:
                     markets_data = data
         except Exception as e:
-            logger.error(f"Failed to fetch from Polymarket: {e}")
+            logger.warning(f"Failed to fetch from Polymarket: {e}")
             return []
 
         normalized_markets = []
@@ -56,11 +59,11 @@ class PolymarketService:
                 market_id = str(m.get("id") or m.get("conditionId"))
                 if not market_id or not m.get("question"):
                     continue
-                
+
                 # Determine asset (heuristic based on title/slug/category)
                 question_lower = m["question"].lower()
                 category_lower = (m.get("category") or "").lower()
-                
+
                 asset = "OTHER"
                 if "bitcoin" in question_lower or "btc" in question_lower or "bitcoin" in category_lower:
                     asset = "BTC"
@@ -75,13 +78,11 @@ class PolymarketService:
                 elif "ripple" in question_lower or "xrp" in question_lower:
                     asset = "XRP"
 
-                # Get market probability (outcomePrices contains prices of Yes and No, e.g. ["0.65", "0.35"])
-                # We default to the first outcome price (Yes)
+                # Get market probability
                 outcome_prices = m.get("outcomePrices")
                 if isinstance(outcome_prices, str):
                     try:
-                        import json
-                        outcome_prices = json.loads(outcome_prices)
+                        outcome_prices = json_module.loads(outcome_prices)
                     except Exception:
                         pass
                 market_prob = 0.5

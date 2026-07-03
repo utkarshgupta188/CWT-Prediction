@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 from crypto_prediction.hermes import HermesSupervisorAgent
 from crypto_prediction.hermes.agents import HermesFeedbackAgent
+from crypto_prediction.hermes.multi_timeframe import MultiTimeframeOrchestrator
 from crypto_prediction.database.repository import AsyncSessionLocal, PredictionRepository
 from crypto_prediction.utils.logger import setup_logger
 from crypto_prediction.schemas.config import settings
@@ -11,6 +12,7 @@ logger = setup_logger(settings.LOG_LEVEL)
 router = APIRouter()
 supervisor = HermesSupervisorAgent()
 feedback_agent = HermesFeedbackAgent()
+multi_tf_orchestrator = MultiTimeframeOrchestrator(supervisor)
 
 async def get_repo():
     async with AsyncSessionLocal() as session:
@@ -29,6 +31,18 @@ class PredictResponse(BaseModel):
     market_probability: float
     kelly: float
     reasoning: str
+
+class MultiPredictRequest(BaseModel):
+    symbols: List[str] = Field(default=["BTCUSDT", "ETHUSDT"], example=["BTCUSDT", "ETHUSDT"])
+    interval: str = Field(default="5m", example="5m")
+    limit: int = Field(default=1000, ge=100, le=1000)
+
+class MultiPredictResponse(BaseModel):
+    results: List[dict]
+
+class MultiTimeframeRequest(BaseModel):
+    symbol: str = Field(..., example="BTCUSDT")
+    limit: int = Field(default=1000, ge=100, le=1000)
 
 class FeedbackRequest(BaseModel):
     prediction_id: int
@@ -51,6 +65,39 @@ async def predict_market(req: PredictRequest, repo: PredictionRepository = Depen
         logger.error(f"Prediction flow failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/predict/multi", response_model=MultiPredictResponse)
+async def predict_markets_multi(req: MultiPredictRequest, repo: PredictionRepository = Depends(get_repo)):
+    """
+    Triggers the prediction research pipeline for multiple symbols in parallel.
+    """
+    try:
+        results = await supervisor.execute_parallel_prediction(
+            repo=repo,
+            symbols=req.symbols,
+            interval=req.interval,
+            limit=req.limit
+        )
+        return {"results": results}
+    except Exception as e:
+        logger.error(f"Parallel prediction flow failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/predict/multi-timeframe")
+async def predict_multi_timeframe(req: MultiTimeframeRequest, repo: PredictionRepository = Depends(get_repo)):
+    """
+    Triggers the multi-timeframe prediction research pipeline (1m, 5m, 15m in parallel).
+    """
+    try:
+        result = await multi_tf_orchestrator.execute_multi_timeframe(
+            repo=repo,
+            symbol=req.symbol,
+            limit=req.limit
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Multi-timeframe flow failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/history")
 async def get_history(limit: int = 100, repo: PredictionRepository = Depends(get_repo)):
     """
@@ -59,8 +106,6 @@ async def get_history(limit: int = 100, repo: PredictionRepository = Depends(get
     predictions = await repo.get_predictions(limit=limit)
     history = []
     for p in predictions:
-        # Check if there is any feedback associated
-        # Since we have relationship or can run a query
         feedback_status = None
         if p.feedbacks:
             fb = p.feedbacks[0]

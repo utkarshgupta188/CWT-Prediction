@@ -223,17 +223,32 @@ def test_hermes_memory_in_supervisor():
     assert "0.2500" in context
 
 
-def test_hermes_memory_in_supervisor():
-    from crypto_prediction.hermes.supervisor import HermesSupervisorAgent
+@pytest.mark.asyncio
+async def test_multi_timeframe_orchestrator():
+    from crypto_prediction.hermes.multi_timeframe import MultiTimeframeOrchestrator
+    
+    # Simple unit test of analysis logic
+    orchestrator = MultiTimeframeOrchestrator()
+    mock_results = {
+        "1m": {"prediction": "UP", "confidence": 0.8, "kelly": 0.1},
+        "5m": {"prediction": "UP", "confidence": 0.7, "kelly": 0.15},
+        "15m": {"prediction": "UP", "confidence": 0.9, "kelly": 0.2}
+    }
+    
+    analysis = orchestrator._analyze_results("BTCUSDT", mock_results)
+    assert analysis["micro_validation"] == "CONFIRMED"
+    assert analysis["arbitrage_detected"] is False
+    assert analysis["consensus_direction"] == "UP"
+    assert analysis["consensus_strength"] == 1.0
+    assert analysis["composite_kelly_recommendation"] > 0.0
 
-    supervisor = HermesSupervisorAgent()
-    supervisor.memory.add_prediction(
-        symbol="BTCUSDT", interval="5m",
-        prediction_direction="UP", confidence=0.85,
-        model_probability=0.85, market_probability=0.6,
-        kelly_fraction=0.25, reasoning="Bullish",
-    )
-    context = supervisor.memory.get_recent_context()
-    assert "BTCUSDT" in context
-    assert "UP" in context
-    assert "0.2500" in context
+    # Test arbitrage detection
+    mock_results_arb = {
+        "1m": {"prediction": "DOWN", "confidence": 0.8, "kelly": 0.0},
+        "5m": {"prediction": "DOWN", "confidence": 0.7, "kelly": 0.0},
+        "15m": {"prediction": "UP", "confidence": 0.9, "kelly": 0.2}
+    }
+    analysis_arb = orchestrator._analyze_results("BTCUSDT", mock_results_arb)
+    assert analysis_arb["arbitrage_detected"] is True
+    assert "MEAN_REVERSION" in analysis_arb["arbitrage_type"]
+
