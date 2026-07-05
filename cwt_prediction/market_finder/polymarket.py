@@ -24,8 +24,12 @@ class PolymarketFinder(MarketFinder):
                     "limit": "10",
                     "search": query
                 }
-                async with httpx.AsyncClient(timeout=self.timeout) as client:
-                    response = await client.get(self.api_url, params=params)
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Accept": "application/json"
+                }
+                with httpx.Client(timeout=self.timeout, headers=headers, trust_env=True) as client:
+                    response = client.get(self.api_url, params=params)
                     if response.status_code == 200:
                         data = response.json()
                         markets.extend(self._parse_markets(data, query))
