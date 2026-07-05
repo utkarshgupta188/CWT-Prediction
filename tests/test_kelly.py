@@ -25,8 +25,8 @@ def test_kelly_edge_cases():
     # Edge case: model prob very high but capped
     assert kelly_fraction(0.999, 0.50) == 0.25
     # Edge case: market prob very close to 1
-    assert pytest.approx(kelly_fraction(0.999, 0.99)) == 0.09 # (0.999 - 0.99) / (1 - 0.99) = 0.009 / 0.01 = 0.9 -> capped at 0.25
-    assert kelly_fraction(0.999, 0.99) == 0.25
+    assert pytest.approx(kelly_fraction(0.992, 0.99)) == 0.20 # (0.992 - 0.99) / (1 - 0.99) = 0.002 / 0.01 = 0.20
+    assert kelly_fraction(0.999, 0.99) == 0.25 # (0.999 - 0.99) / 0.01 = 0.90 -> capped at 0.25
 
 def test_kelly_validation_errors():
     # Out of bounds probabilities

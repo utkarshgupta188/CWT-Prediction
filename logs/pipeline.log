@@ -1,0 +1,29 @@
+{"timestamp": "2026-07-03T13:13:13.915833+00:00", "level": "INFO", "module": "root", "message": "Logging initialized. Writing JSON logs to: logs/pipeline.log"}
+{"timestamp": "2026-07-03T13:13:13.915833+00:00", "level": "INFO", "module": "cwt_prediction.main", "message": "CWT Prediction System CLI started."}
+{"timestamp": "2026-07-03T13:13:13.915833+00:00", "level": "INFO", "module": "cwt_prediction.orchestrator.pipeline", "message": "Starting a new prediction cycle..."}
+{"timestamp": "2026-07-03T13:13:13.916858+00:00", "level": "INFO", "module": "cwt_prediction.feedback_loop.recorder", "message": "Initializing database at: data/predictions.db"}
+{"timestamp": "2026-07-03T13:13:13.937845+00:00", "level": "INFO", "module": "cwt_prediction.orchestrator.pipeline", "message": "Checking for expired, unresolved predictions to resolve..."}
+{"timestamp": "2026-07-03T13:13:13.944353+00:00", "level": "INFO", "module": "cwt_prediction.feedback_loop.resolver", "message": "No unresolved predictions found to resolve."}
+{"timestamp": "2026-07-03T13:13:13.944353+00:00", "level": "INFO", "module": "cwt_prediction.orchestrator.pipeline", "message": "Resolved 0 past predictions."}
+{"timestamp": "2026-07-03T13:13:13.944868+00:00", "level": "INFO", "module": "cwt_prediction.orchestrator.pipeline", "message": "Querying Polymarket and Kalshi for active BTC/ETH prediction markets..."}
+{"timestamp": "2026-07-03T13:13:17.966696+00:00", "level": "INFO", "module": "cwt_prediction.orchestrator.pipeline", "message": "Found 0 markets on Polymarket."}
+{"timestamp": "2026-07-03T13:13:18.774878+00:00", "level": "ERROR", "module": "cwt_prediction.market_finder.kalshi", "message": "Error querying Kalshi API: [Errno 11001] getaddrinfo failed"}
+{"timestamp": "2026-07-03T13:13:18.897320+00:00", "level": "INFO", "module": "cwt_prediction.orchestrator.pipeline", "message": "Found 0 markets on Kalshi."}
+{"timestamp": "2026-07-03T13:13:18.897320+00:00", "level": "WARNING", "module": "cwt_prediction.orchestrator.pipeline", "message": "No active markets found on APIs. Generating mock crypto prediction markets for testing/demonstration..."}
+{"timestamp": "2026-07-03T13:13:18.897320+00:00", "level": "INFO", "module": "cwt_prediction.orchestrator.pipeline", "message": "Processing market mock-btc-up-5m (BTC) on polymarket..."}
+{"timestamp": "2026-07-03T13:13:18.897320+00:00", "level": "INFO", "module": "cwt_prediction.orchestrator.pipeline", "message": "Fetching historical data for BTC from Binance..."}
+{"timestamp": "2026-07-03T13:13:22.865644+00:00", "level": "INFO", "module": "cwt_prediction.forecaster", "message": "Loading tokenizer 'NeoQuasar/Kronos-Tokenizer-2k' and model 'NeoQuasar/Kronos-mini' on cpu..."}
+{"timestamp": "2026-07-03T13:13:33.898809+00:00", "level": "WARNING", "module": "huggingface_hub.utils._http", "message": "Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads."}
+{"timestamp": "2026-07-03T13:18:29.689206+00:00", "level": "INFO", "module": "cwt_prediction.forecaster", "message": "Kronos model loaded successfully."}
+{"timestamp": "2026-07-03T13:18:29.718760+00:00", "level": "INFO", "module": "cwt_prediction.forecaster", "message": "Generating 10 forecast paths using Kronos..."}
+{"timestamp": "2026-07-03T13:18:32.416810+00:00", "level": "INFO", "module": "cwt_prediction.forecaster", "message": "Forecast complete: direction=up, probability=0.60, current_close=62069.99, pred_close=62160.74"}
+{"timestamp": "2026-07-03T13:18:32.417261+00:00", "level": "INFO", "module": "cwt_prediction.orchestrator.pipeline", "message": "Decision for BTC on polymarket: Forecast=up (prob=0.60), Market prob=0.52, Kelly fraction=0.1667", "decision": "up", "confidence": 0.6, "asset": "BTC", "kelly_fraction": 0.1666666666666666, "market_id": "mock-btc-up-5m", "platform": "polymarket"}
+{"timestamp": "2026-07-03T13:18:32.444366+00:00", "level": "INFO", "module": "cwt_prediction.feedback_loop.recorder", "message": "Recorded prediction ID 1 for BTC on polymarket"}
+{"timestamp": "2026-07-03T13:18:32.445251+00:00", "level": "INFO", "module": "cwt_prediction.orchestrator.pipeline", "message": "Processing market mock-eth-down-5m (ETH) on kalshi..."}
+{"timestamp": "2026-07-03T13:18:32.445251+00:00", "level": "INFO", "module": "cwt_prediction.orchestrator.pipeline", "message": "Fetching historical data for ETH from Binance..."}
+{"timestamp": "2026-07-03T13:18:34.462074+00:00", "level": "INFO", "module": "cwt_prediction.forecaster", "message": "Generating 10 forecast paths using Kronos..."}
+{"timestamp": "2026-07-03T13:18:36.855351+00:00", "level": "INFO", "module": "cwt_prediction.forecaster", "message": "Forecast complete: direction=down, probability=0.80, current_close=1740.19, pred_close=1737.30"}
+{"timestamp": "2026-07-03T13:18:36.856738+00:00", "level": "INFO", "module": "cwt_prediction.orchestrator.pipeline", "message": "Decision for ETH on kalshi: Forecast=down (prob=0.80), Market prob=0.52, Kelly fraction=0.2500", "decision": "down", "confidence": 0.8, "asset": "ETH", "kelly_fraction": 0.25, "market_id": "mock-eth-down-5m", "platform": "kalshi"}
+{"timestamp": "2026-07-03T13:18:36.906790+00:00", "level": "INFO", "module": "cwt_prediction.feedback_loop.recorder", "message": "Recorded prediction ID 2 for ETH on kalshi"}
+{"timestamp": "2026-07-03T13:18:36.912830+00:00", "level": "INFO", "module": "cwt_prediction.orchestrator.pipeline", "message": "Cycle complete. Decisions made: 2, Resolved: 0, Historical Accuracy: 0.0% (PnL: 0.0000)"}
+{"timestamp": "2026-07-03T13:18:36.915009+00:00", "level": "INFO", "module": "cwt_prediction.main", "message": "Cycle finished successfully."}
